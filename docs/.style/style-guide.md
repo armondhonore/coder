@@ -40,11 +40,28 @@ To be filled in by follow-up PRs. Planned coverage:
 To be filled in by follow-up PRs. Planned coverage:
 
 - Inclusive-language substitutions
-- HashiCorp casing
 - Dev Container terminology
 - "Setup" vs "set up" and Quickstart casing
 - "Next steps" vs "Learn more"
 - Weasel words
+
+### Brand names
+
+Use each brand's canonical casing in prose. URLs and code references
+(Terraform provider source addresses, GitHub paths) keep the lowercase
+form their owner uses; Vale's `substitution` rule skips inline code and
+links by default, so those are not affected.
+
+| Wrong       | Correct     | Notes                             |
+|-------------|-------------|-----------------------------------|
+| `Hashicorp` | `HashiCorp` | Mixed case: capital H, capital C. |
+
+More brands (GitHub, OpenTofu, Kubernetes, Terraform, JetBrains, VS
+Code) extend this table as they land in follow-up PRs.
+
+Enforced by `Coder.BrandNames` (level `error`). To add a brand: append a
+swap to `docs/.style/styles/Coder/BrandNames.yml`, run `make lint/prose`
+to catch existing-content violations, fix them, then commit.
 
 ## Capitalization and punctuation
 
