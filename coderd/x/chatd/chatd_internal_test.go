@@ -3249,7 +3249,7 @@ func TestActiveGoalSystemPrompt(t *testing.T) {
 	require.Contains(t, text, "complete_goal")
 }
 
-func TestPausedGoalNotInSystemPrompt(t *testing.T) {
+func TestNoActiveGoalSystemPrompt(t *testing.T) {
 	t.Parallel()
 
 	prompt := buildSystemPrompt(
