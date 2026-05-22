@@ -1617,14 +1617,14 @@ const AgentChatPage: FC = () => {
 		if (editedMessageID === undefined) {
 			const goalCommand = parseGoalCommand(message);
 			if (goalCommand) {
-				const goalSend = await handleGoalCommand(goalCommand);
-				if (!goalSend) {
+				const goalSubmission = await handleGoalCommand(goalCommand);
+				if (!goalSubmission) {
 					return;
 				}
 				await submitChatTurn({
-					message: goalSend.message,
+					message: goalSubmission.message,
 					attachments,
-					goalMutation: goalSend.mutation,
+					goalMutation: goalSubmission.mutation,
 					useComposerContent: false,
 				});
 				return;
