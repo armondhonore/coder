@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	"charm.land/fantasy"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/coder/coder/v2/coderd/database"
 	"github.com/coder/coder/v2/coderd/database/db2sdk/chatgoal"
+	"github.com/coder/coder/v2/codersdk"
 )
 
 const (
@@ -34,6 +36,16 @@ type completeGoalArgs struct {
 	Summary string    `json:"summary" description:"A concise non-empty summary of how the goal was completed."`
 }
 
+type goalResult struct {
+	Goal *codersdk.ChatGoal `json:"goal"`
+}
+
+type completeGoalResult struct {
+	Goal      *codersdk.ChatGoal `json:"goal"`
+	Completed bool               `json:"completed"`
+	Summary   string             `json:"summary"`
+}
+
 // GetGoal returns a read-only tool for inspecting the current root goal.
 func GetGoal(db database.Store, options GoalToolOptions) fantasy.AgentTool {
 	return fantasy.NewAgentTool(
@@ -43,14 +55,12 @@ func GetGoal(db database.Store, options GoalToolOptions) fantasy.AgentTool {
 			goal, err := db.GetCurrentChatGoalByRootChatID(ctx, options.RootChatID)
 			if err != nil {
 				if errors.Is(err, sql.ErrNoRows) {
-					return toolResponse(map[string]any{"goal": nil}), nil
+					return marshalToolResponse(goalResult{}), nil
 				}
 				return fantasy.NewTextErrorResponse("get goal: " + err.Error()), nil
 			}
 			sdkGoal := chatgoal.ToSDK(goal)
-			return marshalToolResponse(struct {
-				Goal any `json:"goal"`
-			}{Goal: sdkGoal}), nil
+			return marshalToolResponse(goalResult{Goal: &sdkGoal}), nil
 		},
 	)
 }
@@ -71,6 +81,12 @@ func CompleteGoal(db database.Store, options GoalToolOptions) fantasy.AgentTool 
 			if summary == "" {
 				return fantasy.NewTextErrorResponse("summary is required"), nil
 			}
+			if len(summary) > codersdk.MaxChatGoalCompletionSummaryBytes {
+				return fantasy.NewTextErrorResponse(fmt.Sprintf(
+					"summary must be at most %d bytes",
+					codersdk.MaxChatGoalCompletionSummaryBytes,
+				)), nil
+			}
 
 			var completed database.ChatGoal
 			var chat database.Chat
@@ -87,6 +103,9 @@ func CompleteGoal(db database.Store, options GoalToolOptions) fantasy.AgentTool 
 				}
 				if current.Status != database.ChatGoalStatusActive {
 					return errGoalNotActive
+				}
+				if len(current.Objective)+len(summary) > codersdk.MaxChatGoalTextPayloadBytes {
+					return errGoalTextPayloadTooLong
 				}
 				completed, err = tx.CompleteChatGoalByID(ctx, database.CompleteChatGoalByIDParams{
 					RootChatID: options.RootChatID,
@@ -107,6 +126,11 @@ func CompleteGoal(db database.Store, options GoalToolOptions) fantasy.AgentTool 
 				switch {
 				case errors.Is(err, sql.ErrNoRows):
 					return fantasy.NewTextErrorResponse("current active goal does not match goal_id"), nil
+				case errors.Is(err, errGoalTextPayloadTooLong):
+					return fantasy.NewTextErrorResponse(fmt.Sprintf(
+						"goal objective and summary must be at most %d bytes combined",
+						codersdk.MaxChatGoalTextPayloadBytes,
+					)), nil
 				case errors.Is(err, errGoalNotActive):
 					return fantasy.NewTextErrorResponse("current goal is not active"), nil
 				default:
@@ -118,13 +142,16 @@ func CompleteGoal(db database.Store, options GoalToolOptions) fantasy.AgentTool 
 				options.OnGoalUpdated(ctx, chat, completed)
 			}
 			sdkGoal := chatgoal.ToSDK(completed)
-			return marshalToolResponse(struct {
-				Goal      any    `json:"goal"`
-				Completed bool   `json:"completed"`
-				Summary   string `json:"summary"`
-			}{Goal: sdkGoal, Completed: true, Summary: summary}), nil
+			return marshalToolResponse(completeGoalResult{
+				Goal:      &sdkGoal,
+				Completed: true,
+				Summary:   summary,
+			}), nil
 		},
 	)
 }
 
-var errGoalNotActive = xerrors.New("goal is not active")
+var (
+	errGoalNotActive          = xerrors.New("goal is not active")
+	errGoalTextPayloadTooLong = xerrors.New("goal text payload too long")
+)

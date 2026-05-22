@@ -221,35 +221,18 @@ describe("runGoalAction", () => {
 		updated_at: "2026-05-22T00:00:00Z",
 	});
 
-	it("dismisses completed goals locally without sending a clear mutation", async () => {
-		const updateGoal = vi.fn(async () => undefined);
-		const dismissCompletedGoal = vi.fn();
-
-		await runGoalAction({
-			agentId: "chat-1",
-			goal: makeGoal("complete"),
-			action: "clear",
-			updateGoal,
-			dismissCompletedGoal,
-		});
-
-		expect(dismissCompletedGoal).toHaveBeenCalledWith("chat-1");
-		expect(updateGoal).not.toHaveBeenCalled();
-	});
-
 	it.each([
 		"active",
 		"paused",
+		"complete",
 	] as const)("sends clear mutations for %s goals", async (status) => {
 		const updateGoal = vi.fn(async () => undefined);
-		const dismissCompletedGoal = vi.fn();
 
 		await runGoalAction({
 			agentId: "chat-1",
 			goal: makeGoal(status),
 			action: "clear",
 			updateGoal,
-			dismissCompletedGoal,
 		});
 
 		expect(updateGoal).toHaveBeenCalledWith({
@@ -260,7 +243,54 @@ describe("runGoalAction", () => {
 				completion_summary: undefined,
 			},
 		});
-		expect(dismissCompletedGoal).not.toHaveBeenCalled();
+	});
+
+	it("notifies when pausing a running goal", async () => {
+		const updateGoal = vi.fn(async () => undefined);
+		const onPausedRunningGoal = vi.fn();
+
+		await runGoalAction({
+			agentId: "chat-1",
+			goal: makeGoal("active"),
+			action: "pause",
+			updateGoal,
+			liveChatStatus: "running",
+			onPausedRunningGoal,
+		});
+
+		expect(onPausedRunningGoal).toHaveBeenCalledOnce();
+	});
+
+	it("does not notify when pausing a waiting goal", async () => {
+		const updateGoal = vi.fn(async () => undefined);
+		const onPausedRunningGoal = vi.fn();
+
+		await runGoalAction({
+			agentId: "chat-1",
+			goal: makeGoal("active"),
+			action: "pause",
+			updateGoal,
+			liveChatStatus: "waiting",
+			onPausedRunningGoal,
+		});
+
+		expect(onPausedRunningGoal).not.toHaveBeenCalled();
+	});
+
+	it("does not send lifecycle mutations without a current goal", async () => {
+		const updateGoal = vi.fn(async () => undefined);
+		const onMissingGoal = vi.fn();
+
+		await runGoalAction({
+			agentId: "chat-1",
+			goal: undefined,
+			action: "clear",
+			updateGoal,
+			onMissingGoal,
+		});
+
+		expect(updateGoal).not.toHaveBeenCalled();
+		expect(onMissingGoal).toHaveBeenCalledOnce();
 	});
 });
 

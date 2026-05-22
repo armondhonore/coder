@@ -104,6 +104,15 @@ const (
 	ChatClientTypeAPI ChatClientType = "api"
 )
 
+const (
+	// MaxChatGoalObjectiveBytes limits goal objective text accepted by chat goal mutations.
+	MaxChatGoalObjectiveBytes = 4096
+	// MaxChatGoalCompletionSummaryBytes limits goal completion summaries accepted by chat goal mutations.
+	MaxChatGoalCompletionSummaryBytes = 4096
+	// MaxChatGoalTextPayloadBytes limits combined goal text sent in watch events.
+	MaxChatGoalTextPayloadBytes = 6144
+)
+
 // ChatGoalStatus represents the lifecycle state of a chat goal.
 type ChatGoalStatus string
 

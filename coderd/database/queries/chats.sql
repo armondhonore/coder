@@ -1804,6 +1804,15 @@ WHERE
     AND status IN ('active', 'paused')
 LIMIT 1;
 
+-- name: GetCurrentChatGoalsByRootChatIDs :many
+SELECT
+    *
+FROM
+    chat_goals
+WHERE
+    root_chat_id = ANY(@root_chat_ids::uuid[])
+    AND status IN ('active', 'paused');
+
 -- name: MarkCurrentChatGoalReplacedByRootChatID :many
 UPDATE
     chat_goals
@@ -1866,7 +1875,7 @@ SET
 WHERE
     root_chat_id = @root_chat_id::uuid
     AND id = @id::uuid
-    AND status IN ('active', 'paused')
+    AND status IN ('active', 'paused', 'complete')
 RETURNING *;
 
 -- name: CompleteChatGoalByID :one

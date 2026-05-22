@@ -5982,6 +5982,102 @@ func TestChatGoalLifecycleMutations(t *testing.T) {
 		},
 	})
 	require.ErrorIs(t, err, chatd.ErrChatGoalNotRoot)
+
+	_, err = server.CreateChat(ctx, chatd.CreateOptions{
+		OrganizationID:     org.ID,
+		OwnerID:            user.ID,
+		Title:              "goal-child-mutation",
+		InitialUserContent: []codersdk.ChatMessagePart{codersdk.ChatMessageText("child")},
+		ModelConfigID:      model.ID,
+		ParentChatID:       uuid.NullUUID{UUID: chat.ID, Valid: true},
+		RootChatID:         uuid.NullUUID{UUID: chat.ID, Valid: true},
+		GoalMutation: &codersdk.ChatGoalMutation{
+			Action:    codersdk.ChatGoalMutationActionSet,
+			Objective: "should fail",
+		},
+	})
+	require.ErrorIs(t, err, chatd.ErrChatGoalNotRoot)
+}
+
+func TestChatGoalRejectsLongTextFields(t *testing.T) {
+	t.Parallel()
+
+	ctx := testutil.Context(t, testutil.WaitLong)
+	db, ps := dbtestutil.NewDB(t, dbtestutil.WithDumpOnFailure())
+	user, org, model := seedChatDependencies(t, db)
+	server := newTestServer(t, db, ps, uuid.New())
+
+	_, err := server.CreateChat(ctx, chatd.CreateOptions{
+		OrganizationID:     org.ID,
+		OwnerID:            user.ID,
+		Title:              "goal-too-long",
+		InitialUserContent: []codersdk.ChatMessagePart{codersdk.ChatMessageText("start")},
+		ModelConfigID:      model.ID,
+		GoalMutation: &codersdk.ChatGoalMutation{
+			Action:    codersdk.ChatGoalMutationActionSet,
+			Objective: strings.Repeat("x", codersdk.MaxChatGoalObjectiveBytes+1),
+		},
+	})
+	require.Error(t, err)
+	var mutationErr *chatd.ChatGoalMutationError
+	require.ErrorAs(t, err, &mutationErr)
+	require.Contains(t, mutationErr.Error(), "at most")
+
+	chat, err := server.CreateChat(ctx, chatd.CreateOptions{
+		OrganizationID:     org.ID,
+		OwnerID:            user.ID,
+		Title:              "goal-summary-too-long",
+		InitialUserContent: []codersdk.ChatMessagePart{codersdk.ChatMessageText("start")},
+		ModelConfigID:      model.ID,
+		GoalMutation: &codersdk.ChatGoalMutation{
+			Action:    codersdk.ChatGoalMutationActionSet,
+			Objective: "finish summary validation",
+		},
+	})
+	require.NoError(t, err)
+	goal, err := db.GetCurrentChatGoalByRootChatID(ctx, chat.ID)
+	require.NoError(t, err)
+	longSummary := strings.Repeat("x", codersdk.MaxChatGoalCompletionSummaryBytes+1)
+	_, err = server.ApplyGoalMutation(ctx, chatd.ApplyGoalMutationOptions{
+		ChatID:    chat.ID,
+		CreatedBy: user.ID,
+		Mutation: codersdk.ChatGoalMutation{
+			Action:            codersdk.ChatGoalMutationActionComplete,
+			GoalID:            &goal.ID,
+			CompletionSummary: &longSummary,
+		},
+	})
+	require.Error(t, err)
+	require.ErrorAs(t, err, &mutationErr)
+	require.Contains(t, mutationErr.Error(), "completion_summary")
+
+	chat, err = server.CreateChat(ctx, chatd.CreateOptions{
+		OrganizationID:     org.ID,
+		OwnerID:            user.ID,
+		Title:              "goal-combined-too-long",
+		InitialUserContent: []codersdk.ChatMessagePart{codersdk.ChatMessageText("start")},
+		ModelConfigID:      model.ID,
+		GoalMutation: &codersdk.ChatGoalMutation{
+			Action:    codersdk.ChatGoalMutationActionSet,
+			Objective: strings.Repeat("x", codersdk.MaxChatGoalObjectiveBytes),
+		},
+	})
+	require.NoError(t, err)
+	goal, err = db.GetCurrentChatGoalByRootChatID(ctx, chat.ID)
+	require.NoError(t, err)
+	combinedSummary := strings.Repeat("x", codersdk.MaxChatGoalTextPayloadBytes-codersdk.MaxChatGoalObjectiveBytes+1)
+	_, err = server.ApplyGoalMutation(ctx, chatd.ApplyGoalMutationOptions{
+		ChatID:    chat.ID,
+		CreatedBy: user.ID,
+		Mutation: codersdk.ChatGoalMutation{
+			Action:            codersdk.ChatGoalMutationActionComplete,
+			GoalID:            &goal.ID,
+			CompletionSummary: &combinedSummary,
+		},
+	})
+	require.Error(t, err)
+	require.ErrorAs(t, err, &mutationErr)
+	require.Contains(t, mutationErr.Error(), "combined")
 }
 
 func TestChatGoalLifecycleCompleteDefaultSummary(t *testing.T) {

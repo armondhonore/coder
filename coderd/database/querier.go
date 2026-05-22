@@ -447,6 +447,7 @@ type sqlcQuerier interface {
 	GetCryptoKeys(ctx context.Context) ([]CryptoKey, error)
 	GetCryptoKeysByFeature(ctx context.Context, feature CryptoKeyFeature) ([]CryptoKey, error)
 	GetCurrentChatGoalByRootChatID(ctx context.Context, rootChatID uuid.UUID) (ChatGoal, error)
+	GetCurrentChatGoalsByRootChatIDs(ctx context.Context, rootChatIds []uuid.UUID) ([]ChatGoal, error)
 	GetDBCryptKeys(ctx context.Context) ([]DBCryptKey, error)
 	GetDERPMeshKey(ctx context.Context) (string, error)
 	GetDefaultChatModelConfig(ctx context.Context) (ChatModelConfig, error)

@@ -57,7 +57,7 @@ const actionsForStatus = (
 		case "active":
 			return ["pause", "complete", "clear"];
 		case "paused":
-			return ["resume", "complete", "clear"];
+			return ["resume", "clear"];
 		case "complete":
 			return ["clear"];
 		case "cleared":

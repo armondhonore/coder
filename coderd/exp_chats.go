@@ -516,49 +516,47 @@ func sdkChatRootID(chat codersdk.Chat) uuid.UUID {
 	return chat.ID
 }
 
-func currentChatGoalSDK(ctx context.Context, db database.Store, rootChatID uuid.UUID) (*codersdk.ChatGoal, error) {
-	goal, err := db.GetCurrentChatGoalByRootChatID(ctx, rootChatID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			//nolint:nilnil // A missing current goal is represented as nil.
-			return nil, nil
-		}
-		return nil, err
-	}
-	sdkGoal := db2sdk.ChatGoal(goal)
-	return &sdkGoal, nil
-}
-
 func (api *API) hydrateChatGoals(ctx context.Context, chats []codersdk.Chat) error {
-	goalsByRootID := map[uuid.UUID]*codersdk.ChatGoal{}
-	var loadGoal func(uuid.UUID) (*codersdk.ChatGoal, error) = func(rootID uuid.UUID) (*codersdk.ChatGoal, error) {
-		if goal, ok := goalsByRootID[rootID]; ok {
-			return goal, nil
+	rootIDs := map[uuid.UUID]struct{}{}
+	var collectRootIDs func([]codersdk.Chat)
+	collectRootIDs = func(values []codersdk.Chat) {
+		for _, chat := range values {
+			rootIDs[sdkChatRootID(chat)] = struct{}{}
+			if len(chat.Children) > 0 {
+				collectRootIDs(chat.Children)
+			}
 		}
-		goal, err := currentChatGoalSDK(ctx, api.Database, rootID)
-		if err != nil {
-			return nil, err
-		}
-		goalsByRootID[rootID] = goal
-		return goal, nil
 	}
-	var hydrate func([]codersdk.Chat) error
-	hydrate = func(values []codersdk.Chat) error {
-		for i := range values {
-			goal, err := loadGoal(sdkChatRootID(values[i]))
-			if err != nil {
-				return err
-			}
-			values[i].Goal = goal
-			if len(values[i].Children) > 0 {
-				if err := hydrate(values[i].Children); err != nil {
-					return err
-				}
-			}
-		}
+	collectRootIDs(chats)
+	if len(rootIDs) == 0 {
 		return nil
 	}
-	return hydrate(chats)
+
+	ids := make([]uuid.UUID, 0, len(rootIDs))
+	for id := range rootIDs {
+		ids = append(ids, id)
+	}
+	goals, err := api.Database.GetCurrentChatGoalsByRootChatIDs(ctx, ids)
+	if err != nil {
+		return xerrors.Errorf("get current chat goals: %w", err)
+	}
+	goalsByRootID := make(map[uuid.UUID]*codersdk.ChatGoal, len(goals))
+	for _, goal := range goals {
+		sdkGoal := db2sdk.ChatGoal(goal)
+		goalsByRootID[goal.RootChatID] = &sdkGoal
+	}
+
+	var hydrate func([]codersdk.Chat)
+	hydrate = func(values []codersdk.Chat) {
+		for i := range values {
+			values[i].Goal = goalsByRootID[sdkChatRootID(values[i])]
+			if len(values[i].Children) > 0 {
+				hydrate(values[i].Children)
+			}
+		}
+	}
+	hydrate(chats)
+	return nil
 }
 
 func chatGoalResponse(goal *database.ChatGoal) codersdk.ChatGoalResponse {
@@ -573,7 +571,11 @@ func writeChatGoalMutationError(ctx context.Context, rw http.ResponseWriter, err
 	var mutationErr *chatd.ChatGoalMutationError
 	switch {
 	case errors.As(err, &mutationErr):
-		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{Message: mutationErr.Error() + "."})
+		message := strings.TrimSpace(mutationErr.Error())
+		if !strings.HasSuffix(message, ".") {
+			message += "."
+		}
+		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{Message: message})
 		return true
 	case errors.Is(err, chatd.ErrChatGoalNotRoot):
 		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{Message: "Goal mutations are only supported on root chats."})
@@ -1416,15 +1418,17 @@ func (api *API) postChats(rw http.ResponseWriter, r *http.Request) {
 
 	chatFiles := api.fetchChatFileMetadata(ctx, chat.ID)
 	response := db2sdk.Chat(chat, nil, chatFiles)
-	createdResponse := []codersdk.Chat{response}
-	if err := api.hydrateChatGoals(ctx, createdResponse); err != nil {
-		httpapi.Write(ctx, rw, http.StatusInternalServerError, codersdk.Response{
-			Message: "Failed to load chat goals.",
-			Detail:  err.Error(),
-		})
-		return
+	if req.GoalMutation != nil {
+		createdResponse := []codersdk.Chat{response}
+		if err := api.hydrateChatGoals(ctx, createdResponse); err != nil {
+			httpapi.Write(ctx, rw, http.StatusInternalServerError, codersdk.Response{
+				Message: "Failed to load chat goals.",
+				Detail:  err.Error(),
+			})
+			return
+		}
+		response = createdResponse[0]
 	}
-	response = createdResponse[0]
 	if len(unlinked) > 0 {
 		if capExceeded {
 			response.Warnings = append(response.Warnings, fileLinkCapWarning(len(unlinked)))

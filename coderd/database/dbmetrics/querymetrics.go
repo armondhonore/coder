@@ -1761,6 +1761,14 @@ func (m queryMetricsStore) GetCurrentChatGoalByRootChatID(ctx context.Context, r
 	return r0, r1
 }
 
+func (m queryMetricsStore) GetCurrentChatGoalsByRootChatIDs(ctx context.Context, rootChatIds []uuid.UUID) ([]database.ChatGoal, error) {
+	start := time.Now()
+	r0, r1 := m.s.GetCurrentChatGoalsByRootChatIDs(ctx, rootChatIds)
+	m.queryLatencies.WithLabelValues("GetCurrentChatGoalsByRootChatIDs").Observe(time.Since(start).Seconds())
+	m.queryCounts.WithLabelValues(httpmw.ExtractHTTPRoute(ctx), httpmw.ExtractHTTPMethod(ctx), "GetCurrentChatGoalsByRootChatIDs").Inc()
+	return r0, r1
+}
+
 func (m queryMetricsStore) GetDBCryptKeys(ctx context.Context) ([]database.DBCryptKey, error) {
 	start := time.Now()
 	r0, r1 := m.s.GetDBCryptKeys(ctx)

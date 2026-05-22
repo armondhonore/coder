@@ -60,10 +60,11 @@ export const Complete: Story = {
 		}),
 		onAction: fn(),
 	},
-	play: async ({ canvasElement }) => {
+	play: async ({ canvasElement, args }) => {
 		const canvas = within(canvasElement);
 		expect(canvas.getByText("Complete")).toBeVisible();
 		expect(canvas.getByText(/All goal UX work is complete/)).toBeVisible();
-		expect(canvas.getByRole("button", { name: /Clear/i })).toBeVisible();
+		await userEvent.click(canvas.getByRole("button", { name: /Clear/i }));
+		expect(args.onAction).toHaveBeenCalledWith("clear");
 	},
 };

@@ -6502,7 +6502,7 @@ SET
 WHERE
     root_chat_id = $1::uuid
     AND id = $2::uuid
-    AND status IN ('active', 'paused')
+    AND status IN ('active', 'paused', 'complete')
 RETURNING id, root_chat_id, created_from_chat_id, objective, status, completion_summary, created_by_user_id, completed_by_user_id, completed_by_agent, created_at, updated_at, completed_at, cleared_at, replaced_at
 `
 
@@ -8685,6 +8685,54 @@ func (q *sqlQuerier) GetCurrentChatGoalByRootChatID(ctx context.Context, rootCha
 		&i.ReplacedAt,
 	)
 	return i, err
+}
+
+const getCurrentChatGoalsByRootChatIDs = `-- name: GetCurrentChatGoalsByRootChatIDs :many
+SELECT
+    id, root_chat_id, created_from_chat_id, objective, status, completion_summary, created_by_user_id, completed_by_user_id, completed_by_agent, created_at, updated_at, completed_at, cleared_at, replaced_at
+FROM
+    chat_goals
+WHERE
+    root_chat_id = ANY($1::uuid[])
+    AND status IN ('active', 'paused')
+`
+
+func (q *sqlQuerier) GetCurrentChatGoalsByRootChatIDs(ctx context.Context, rootChatIds []uuid.UUID) ([]ChatGoal, error) {
+	rows, err := q.db.QueryContext(ctx, getCurrentChatGoalsByRootChatIDs, pq.Array(rootChatIds))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ChatGoal
+	for rows.Next() {
+		var i ChatGoal
+		if err := rows.Scan(
+			&i.ID,
+			&i.RootChatID,
+			&i.CreatedFromChatID,
+			&i.Objective,
+			&i.Status,
+			&i.CompletionSummary,
+			&i.CreatedByUserID,
+			&i.CompletedByUserID,
+			&i.CompletedByAgent,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CompletedAt,
+			&i.ClearedAt,
+			&i.ReplacedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getLastChatMessageByRole = `-- name: GetLastChatMessageByRole :one

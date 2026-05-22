@@ -59,6 +59,15 @@ describe("parseGoalCommand", () => {
 		});
 	});
 
+	it("rejects empty escaped objectives and summary flags", () => {
+		expect(parseGoalCommand("/goal --")).toMatchObject({
+			kind: "unsupported",
+		});
+		expect(parseGoalCommand("/goal complete --summary")).toMatchObject({
+			kind: "unsupported",
+		});
+	});
+
 	it("rejects unsupported budget commands", () => {
 		expect(parseGoalCommand("/goal budget 10 turns")).toMatchObject({
 			kind: "unsupported",

@@ -1030,10 +1030,9 @@ func TestChat_AllFieldsPopulated(t *testing.T) {
 
 	v := reflect.ValueOf(got)
 	typ := v.Type()
-	// HasUnread is populated by ChatRowsWithChildren (which joins the
-	// read-cursor query), not by Chat. Warnings is a transient
-	// field populated by handlers, not the converter. Goal is attached
-	// by handlers after loading the current root chat goal.
+	// HasUnread is populated by ChatRowsWithChildren, which joins the
+	// read-cursor query. Warnings is a transient field populated by handlers.
+	// Goal is attached by handlers after loading the current root chat goal.
 	skip := map[string]bool{"Goal": true, "HasUnread": true, "Warnings": true}
 	for i := range typ.NumField() {
 		field := typ.Field(i)

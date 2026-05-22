@@ -3270,6 +3270,21 @@ func (mr *MockStoreMockRecorder) GetCurrentChatGoalByRootChatID(ctx, rootChatID 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentChatGoalByRootChatID", reflect.TypeOf((*MockStore)(nil).GetCurrentChatGoalByRootChatID), ctx, rootChatID)
 }
 
+// GetCurrentChatGoalsByRootChatIDs mocks base method.
+func (m *MockStore) GetCurrentChatGoalsByRootChatIDs(ctx context.Context, rootChatIds []uuid.UUID) ([]database.ChatGoal, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCurrentChatGoalsByRootChatIDs", ctx, rootChatIds)
+	ret0, _ := ret[0].([]database.ChatGoal)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCurrentChatGoalsByRootChatIDs indicates an expected call of GetCurrentChatGoalsByRootChatIDs.
+func (mr *MockStoreMockRecorder) GetCurrentChatGoalsByRootChatIDs(ctx, rootChatIds any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentChatGoalsByRootChatIDs", reflect.TypeOf((*MockStore)(nil).GetCurrentChatGoalsByRootChatIDs), ctx, rootChatIds)
+}
+
 // GetDBCryptKeys mocks base method.
 func (m *MockStore) GetDBCryptKeys(ctx context.Context) ([]database.DBCryptKey, error) {
 	m.ctrl.T.Helper()

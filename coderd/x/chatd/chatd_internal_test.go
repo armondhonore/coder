@@ -561,6 +561,8 @@ func TestAllowedExploreToolNames(t *testing.T) {
 	externalConfigID := uuid.New()
 	got := allowedExploreToolNames([]fantasy.AgentTool{
 		newTestAgentTool("read_file"),
+		newTestAgentTool("get_goal"),
+		newTestAgentTool("complete_goal"),
 		newTestAgentTool("write_file"),
 		newTestMCPAgentTool("external-mcp__echo", externalConfigID),
 		newTestAgentTool("workspace-mcp__echo"),
@@ -579,12 +581,14 @@ func TestAllowedExploreToolNames(t *testing.T) {
 
 	require.Equal(t, []string{
 		"read_file",
+		"get_goal",
 		"external-mcp__echo",
 		"execute",
 		"process_output",
 		"read_skill",
 		"read_skill_file",
 	}, got)
+	require.NotContains(t, got, "complete_goal")
 	require.NotContains(t, got, "workspace-mcp__echo")
 	require.NotContains(t, got, "start_workspace")
 	require.NotContains(t, got, "stop_workspace")
@@ -866,7 +870,6 @@ func TestRegenerateChatTitle_PersistsAndBroadcasts(t *testing.T) {
 		configCache: newChatConfigCache(context.Background(), db, clock),
 	}
 
-	expectNoCurrentGoal(db, chatID)
 	db.EXPECT().GetChatModelConfigByID(gomock.Any(), modelConfigID).Return(modelConfig, nil)
 	providerID := uuid.New()
 	db.EXPECT().GetAIProviders(gomock.Any(), gomock.Any()).Return([]database.AIProvider{{
@@ -1033,7 +1036,6 @@ func TestRegenerateChatTitle_PersistsAndBroadcasts_IdleChatReleasesManualLock(t 
 		configCache: newChatConfigCache(context.Background(), db, clock),
 	}
 
-	expectNoCurrentGoal(db, chatID)
 	db.EXPECT().GetChatModelConfigByID(gomock.Any(), modelConfigID).Return(modelConfig, nil)
 	providerID := uuid.New()
 	db.EXPECT().GetAIProviders(gomock.Any(), gomock.Any()).Return([]database.AIProvider{{

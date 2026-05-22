@@ -228,8 +228,8 @@ export const runGoalAction = async (params: {
 		chatId: string;
 		mutation: TypesGen.ChatGoalMutation;
 	}) => Promise<unknown>;
-	dismissCompletedGoal: (chatId: string) => void;
 	liveChatStatus?: TypesGen.ChatStatus | null;
+	onMissingGoal?: () => void;
 	onPausedRunningGoal?: () => void;
 }): Promise<void> => {
 	const {
@@ -238,15 +238,15 @@ export const runGoalAction = async (params: {
 		action,
 		completionSummary,
 		updateGoal,
-		dismissCompletedGoal,
 		liveChatStatus,
+		onMissingGoal,
 		onPausedRunningGoal,
 	} = params;
 	if (!agentId) {
 		return;
 	}
-	if (action === "clear" && goal?.status === "complete") {
-		dismissCompletedGoal(agentId);
+	if (!goal?.id) {
+		onMissingGoal?.();
 		return;
 	}
 	await updateGoal({
@@ -1250,10 +1250,10 @@ const AgentChatPage: FC = () => {
 			action,
 			completionSummary,
 			updateGoal: updateChatGoalAsync,
-			dismissCompletedGoal: (chatId) => {
-				setCachedChatGoal(queryClient, chatId, undefined);
-			},
 			liveChatStatus,
+			onMissingGoal: () => {
+				toast.info("No current goal.");
+			},
 			onPausedRunningGoal: () => {
 				toast.info(
 					"Goal paused. The current turn may continue. Use Stop for immediate interruption.",
@@ -1275,7 +1275,12 @@ const AgentChatPage: FC = () => {
 			case "set":
 				return { message: command.objective, mutation: command.mutation };
 			case "show": {
-				const response = await queryClient.fetchQuery(chatGoal(agentId));
+				const response = await queryClient
+					.fetchQuery(chatGoal(agentId))
+					.catch((error) => {
+						toast.error("Failed to fetch goal.");
+						throw error;
+					});
 				setCachedChatGoal(queryClient, agentId, response.goal);
 				toast.info(
 					response.goal
@@ -1292,7 +1297,7 @@ const AgentChatPage: FC = () => {
 				return null;
 			case "unsupported":
 				toast.warning(command.reason);
-				throw new Error(command.reason);
+				return null;
 		}
 	};
 

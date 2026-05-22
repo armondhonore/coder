@@ -562,6 +562,14 @@ func (s *MethodTestSuite) TestChats() {
 		dbm.EXPECT().GetCurrentChatGoalByRootChatID(gomock.Any(), chat.ID).Return(goal, nil).AnyTimes()
 		check.Args(chat.ID).Asserts(chat, policy.ActionRead).Returns(goal)
 	}))
+	s.Run("GetCurrentChatGoalsByRootChatIDs", s.Mocked(func(dbm *dbmock.MockStore, faker *gofakeit.Faker, check *expects) {
+		chat := testutil.Fake(s.T(), faker, database.Chat{})
+		goal := testutil.Fake(s.T(), faker, database.ChatGoal{})
+		rootIDs := []uuid.UUID{chat.ID}
+		dbm.EXPECT().GetChatByID(gomock.Any(), chat.ID).Return(chat, nil).AnyTimes()
+		dbm.EXPECT().GetCurrentChatGoalsByRootChatIDs(gomock.Any(), rootIDs).Return([]database.ChatGoal{goal}, nil).AnyTimes()
+		check.Args(rootIDs).Asserts(chat, policy.ActionRead).Returns([]database.ChatGoal{goal})
+	}))
 	s.Run("InsertActiveChatGoal", s.Mocked(func(dbm *dbmock.MockStore, faker *gofakeit.Faker, check *expects) {
 		chat := testutil.Fake(s.T(), faker, database.Chat{})
 		goal := testutil.Fake(s.T(), faker, database.ChatGoal{})

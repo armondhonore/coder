@@ -3419,6 +3419,15 @@ func (q *querier) GetCurrentChatGoalByRootChatID(ctx context.Context, rootChatID
 	return q.db.GetCurrentChatGoalByRootChatID(ctx, rootChatID)
 }
 
+func (q *querier) GetCurrentChatGoalsByRootChatIDs(ctx context.Context, rootChatIDs []uuid.UUID) ([]database.ChatGoal, error) {
+	for _, rootChatID := range rootChatIDs {
+		if err := q.authorizeChatGoalRoot(ctx, policy.ActionRead, rootChatID); err != nil {
+			return nil, err
+		}
+	}
+	return q.db.GetCurrentChatGoalsByRootChatIDs(ctx, rootChatIDs)
+}
+
 func (q *querier) GetDBCryptKeys(ctx context.Context) ([]database.DBCryptKey, error) {
 	if err := q.authorizeContext(ctx, policy.ActionRead, rbac.ResourceSystem); err != nil {
 		return nil, err

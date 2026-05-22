@@ -5390,6 +5390,24 @@ export const MaxChatFileIDs = 50;
  */
 export const MaxChatFileSizeBytes = 10485760;
 
+// From codersdk/chats.go
+/**
+ * MaxChatGoalCompletionSummaryBytes limits goal completion summaries accepted by chat goal mutations.
+ */
+export const MaxChatGoalCompletionSummaryBytes = 4096;
+
+// From codersdk/chats.go
+/**
+ * MaxChatGoalObjectiveBytes limits goal objective text accepted by chat goal mutations.
+ */
+export const MaxChatGoalObjectiveBytes = 4096;
+
+// From codersdk/chats.go
+/**
+ * MaxChatGoalTextPayloadBytes limits combined goal text sent in watch events.
+ */
+export const MaxChatGoalTextPayloadBytes = 6144;
+
 // From codersdk/usersecretvalidation.go
 /**
  * MaxUserSecretEnvNameLength caps the length of an env_name when one

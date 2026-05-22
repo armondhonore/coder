@@ -1423,7 +1423,8 @@ var (
 
 	// ErrChatGoalInvalidMutation indicates a malformed goal mutation request.
 	ErrChatGoalInvalidMutation = xerrors.New("invalid chat goal mutation")
-	// ErrChatGoalNotFound indicates the expected current goal was not active.
+	// ErrChatGoalNotFound indicates the requested goal does not match
+	// the current goal.
 	ErrChatGoalNotFound = xerrors.New("chat goal not found")
 	// ErrChatGoalNotRoot indicates goal mutation was attempted on a child chat.
 	ErrChatGoalNotRoot = xerrors.New("chat goal mutations require a root chat")
@@ -1645,6 +1646,36 @@ func currentChatGoal(ctx context.Context, db database.Store, rootChatID uuid.UUI
 	return &goal, nil
 }
 
+func validateGoalObjectiveLength(objective string) error {
+	if len(objective) > codersdk.MaxChatGoalObjectiveBytes {
+		return &ChatGoalMutationError{Message: fmt.Sprintf(
+			"goal objective must be at most %d bytes",
+			codersdk.MaxChatGoalObjectiveBytes,
+		)}
+	}
+	return nil
+}
+
+func validateGoalCompletionSummaryLength(summary string) error {
+	if len(summary) > codersdk.MaxChatGoalCompletionSummaryBytes {
+		return &ChatGoalMutationError{Message: fmt.Sprintf(
+			"goal completion_summary must be at most %d bytes",
+			codersdk.MaxChatGoalCompletionSummaryBytes,
+		)}
+	}
+	return nil
+}
+
+func validateGoalTextPayloadLength(objective string, summary string) error {
+	if len(objective)+len(summary) > codersdk.MaxChatGoalTextPayloadBytes {
+		return &ChatGoalMutationError{Message: fmt.Sprintf(
+			"goal objective and completion_summary must be at most %d bytes combined",
+			codersdk.MaxChatGoalTextPayloadBytes,
+		)}
+	}
+	return nil
+}
+
 func normalizeMessageGoalMutation(mutation *codersdk.ChatGoalMutation) (*codersdk.ChatGoalMutation, error) {
 	if mutation == nil {
 		//nolint:nilnil // No requested mutation is represented as nil.
@@ -1657,6 +1688,9 @@ func normalizeMessageGoalMutation(mutation *codersdk.ChatGoalMutation) (*codersd
 	objective := strings.TrimSpace(normalized.Objective)
 	if objective == "" {
 		return nil, &ChatGoalMutationError{Message: "goal objective is required"}
+	}
+	if err := validateGoalObjectiveLength(objective); err != nil {
+		return nil, err
 	}
 	if normalized.GoalID != nil {
 		return nil, &ChatGoalMutationError{Message: "goal_id is not allowed when setting a goal"}
@@ -1671,6 +1705,11 @@ func normalizeMessageGoalMutation(mutation *codersdk.ChatGoalMutation) (*codersd
 func normalizeMetadataGoalMutation(mutation codersdk.ChatGoalMutation) (codersdk.ChatGoalMutation, error) {
 	normalized := mutation
 	normalized.Objective = strings.TrimSpace(normalized.Objective)
+	if normalized.Objective != "" {
+		if err := validateGoalObjectiveLength(normalized.Objective); err != nil {
+			return codersdk.ChatGoalMutation{}, err
+		}
+	}
 	if normalized.CompletionSummary != nil {
 		summary := strings.TrimSpace(*normalized.CompletionSummary)
 		normalized.CompletionSummary = &summary
@@ -1699,6 +1738,9 @@ func normalizeMetadataGoalMutation(mutation codersdk.ChatGoalMutation) (codersdk
 		if normalized.CompletionSummary == nil || *normalized.CompletionSummary == "" {
 			summary := defaultUserCompletionSummary
 			normalized.CompletionSummary = &summary
+		}
+		if err := validateGoalCompletionSummaryLength(*normalized.CompletionSummary); err != nil {
+			return codersdk.ChatGoalMutation{}, err
 		}
 	case codersdk.ChatGoalMutationActionSet:
 		return codersdk.ChatGoalMutation{}, &ChatGoalMutationError{Message: "set goal mutations must be sent with a chat message"}
@@ -1772,6 +1814,9 @@ func applyGoalMutation(
 		if current.Status != database.ChatGoalStatusActive {
 			return nil, &ChatGoalMutationError{Message: "current goal is not active"}
 		}
+		if err := validateGoalTextPayloadLength(current.Objective, *mutation.CompletionSummary); err != nil {
+			return nil, err
+		}
 		goal, err := tx.CompleteChatGoalByID(ctx, database.CompleteChatGoalByIDParams{
 			RootChatID: rootChatID,
 			ID:         *mutation.GoalID,
@@ -1840,6 +1885,7 @@ func (p *Server) CreateChat(ctx context.Context, opts CreateOptions) (database.C
 		return database.Chat{}, xerrors.Errorf("invalid client_type: %q", opts.ClientType)
 	}
 	var chat database.Chat
+	var createdGoal *database.ChatGoal
 	txErr := p.db.InTx(func(tx database.Store) error {
 		if limitErr := p.checkUsageLimit(ctx, tx, opts.OwnerID, uuid.NullUUID{UUID: opts.OrganizationID, Valid: true}); limitErr != nil {
 			return limitErr
@@ -1881,7 +1927,12 @@ func (p *Server) CreateChat(ctx context.Context, opts CreateOptions) (database.C
 		}
 
 		if goalMutation != nil {
-			if _, err := applyGoalMutation(ctx, tx, insertedChat.ID, insertedChat.ID, opts.OwnerID, *goalMutation); err != nil {
+			if !isRootChat(insertedChat) {
+				return ErrChatGoalNotRoot
+			}
+			var err error
+			createdGoal, err = applyGoalMutation(ctx, tx, insertedChat.ID, insertedChat.ID, opts.OwnerID, *goalMutation)
+			if err != nil {
 				return err
 			}
 		}
@@ -1973,6 +2024,9 @@ func (p *Server) CreateChat(ctx context.Context, opts CreateOptions) (database.C
 	}
 
 	p.publishChatPubsubEvent(chat, codersdk.ChatWatchEventKindCreated, nil)
+	if createdGoal != nil {
+		p.publishChatGoalChange(chat, createdGoal)
+	}
 	p.signalWake()
 	return chat, nil
 }
@@ -5825,21 +5879,6 @@ func (p *Server) publishChatGoalChange(chat database.Chat, goal *database.ChatGo
 	})
 }
 
-func (p *Server) attachCurrentGoal(ctx context.Context, chat database.Chat, sdkChat *codersdk.Chat) {
-	goal, err := currentChatGoal(ctx, p.db, chatRootID(chat))
-	if err != nil {
-		p.logger.Warn(ctx, "failed to load current chat goal for event",
-			slog.F("chat_id", chat.ID),
-			slog.Error(err),
-		)
-		return
-	}
-	if goal != nil {
-		sdkGoal := db2sdk.ChatGoal(*goal)
-		sdkChat.Goal = &sdkGoal
-	}
-}
-
 // publishChatPubsubEvent broadcasts a chat lifecycle event via PostgreSQL
 // pubsub so that all replicas can push updates to watching clients.
 func (p *Server) publishChatPubsubEvent(chat database.Chat, kind codersdk.ChatWatchEventKind, diffStatus *codersdk.ChatDiffStatus) {
@@ -5854,10 +5893,6 @@ func (p *Server) publishChatPubsubEvent(chat database.Chat, kind codersdk.ChatWa
 	if diffStatus != nil {
 		sdkChat.DiffStatus = diffStatus
 	}
-	//nolint:gocritic // Event hydration runs outside a request actor and needs chatd-scoped read access.
-	goalCtx, cancel := context.WithTimeout(dbauthz.AsChatd(context.Background()), chatStreamControlFetchTimeout)
-	p.attachCurrentGoal(goalCtx, chat, &sdkChat)
-	cancel()
 	p.publishChatWatchEvent(chat.OwnerID, codersdk.ChatWatchEvent{
 		Kind: kind,
 		Chat: sdkChat,
