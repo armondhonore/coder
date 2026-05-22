@@ -11,7 +11,7 @@ import (
 	"golang.org/x/xerrors"
 
 	"github.com/coder/coder/v2/coderd/database"
-	"github.com/coder/coder/v2/codersdk"
+	"github.com/coder/coder/v2/coderd/database/db2sdk/chatgoal"
 )
 
 const (
@@ -47,7 +47,7 @@ func GetGoal(db database.Store, options GoalToolOptions) fantasy.AgentTool {
 				}
 				return fantasy.NewTextErrorResponse("get goal: " + err.Error()), nil
 			}
-			sdkGoal := chatGoalToSDK(goal)
+			sdkGoal := chatgoal.ToSDK(goal)
 			return marshalToolResponse(struct {
 				Goal any `json:"goal"`
 			}{Goal: sdkGoal}), nil
@@ -117,7 +117,7 @@ func CompleteGoal(db database.Store, options GoalToolOptions) fantasy.AgentTool 
 			if options.OnGoalUpdated != nil {
 				options.OnGoalUpdated(ctx, chat, completed)
 			}
-			sdkGoal := chatGoalToSDK(completed)
+			sdkGoal := chatgoal.ToSDK(completed)
 			return marshalToolResponse(struct {
 				Goal      any    `json:"goal"`
 				Completed bool   `json:"completed"`
@@ -125,43 +125,6 @@ func CompleteGoal(db database.Store, options GoalToolOptions) fantasy.AgentTool 
 			}{Goal: sdkGoal, Completed: true, Summary: summary}), nil
 		},
 	)
-}
-
-func chatGoalToSDK(goal database.ChatGoal) codersdk.ChatGoal {
-	converted := codersdk.ChatGoal{
-		ID:               goal.ID,
-		RootChatID:       goal.RootChatID,
-		Objective:        goal.Objective,
-		Status:           codersdk.ChatGoalStatus(goal.Status),
-		CreatedByUserID:  goal.CreatedByUserID,
-		CompletedByAgent: goal.CompletedByAgent,
-		CreatedAt:        goal.CreatedAt,
-		UpdatedAt:        goal.UpdatedAt,
-	}
-	if goal.CreatedFromChatID.Valid {
-		createdFromChatID := goal.CreatedFromChatID.UUID
-		converted.CreatedFromChatID = &createdFromChatID
-	}
-	if goal.CompletionSummary.Valid {
-		converted.CompletionSummary = &goal.CompletionSummary.String
-	}
-	if goal.CompletedByUserID.Valid {
-		completedByUserID := goal.CompletedByUserID.UUID
-		converted.CompletedByUserID = &completedByUserID
-	}
-	if goal.CompletedAt.Valid {
-		completedAt := goal.CompletedAt.Time
-		converted.CompletedAt = &completedAt
-	}
-	if goal.ClearedAt.Valid {
-		clearedAt := goal.ClearedAt.Time
-		converted.ClearedAt = &clearedAt
-	}
-	if goal.ReplacedAt.Valid {
-		replacedAt := goal.ReplacedAt.Time
-		converted.ReplacedAt = &replacedAt
-	}
-	return converted
 }
 
 var errGoalNotActive = xerrors.New("goal is not active")

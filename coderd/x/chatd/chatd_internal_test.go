@@ -69,6 +69,13 @@ func (t *testAgentTool) SetProviderOptions(opts fantasy.ProviderOptions) {
 	t.providerOptions = opts
 }
 
+func expectNoCurrentGoal(db *dbmock.MockStore, rootChatID uuid.UUID) {
+	db.EXPECT().
+		GetCurrentChatGoalByRootChatID(gomock.Any(), rootChatID).
+		Return(database.ChatGoal{}, sql.ErrNoRows).
+		AnyTimes()
+}
+
 type testMCPAgentTool struct {
 	*testAgentTool
 	configID uuid.UUID
@@ -659,18 +666,22 @@ func TestStopAfterBehaviorTools(t *testing.T) {
 		Valid:    true,
 	}
 
-	t.Run("DefaultModeReturnsNil", func(t *testing.T) {
+	t.Run("DefaultModeIncludesGoalTool", func(t *testing.T) {
 		t.Parallel()
-		require.Nil(t, stopAfterBehaviorTools(
+		require.Equal(t, map[string]struct{}{
+			chattool.CompleteGoalToolName: {},
+		}, stopAfterBehaviorTools(
 			database.NullChatPlanMode{},
 			database.NullChatMode{},
 			uuid.NullUUID{},
 		))
 	})
 
-	t.Run("PlanModeDelegatesToPlanTools", func(t *testing.T) {
+	t.Run("PlanModeIncludesGoalTool", func(t *testing.T) {
 		t.Parallel()
-		require.Equal(t, stopAfterPlanTools(planMode, uuid.NullUUID{}), stopAfterBehaviorTools(
+		want := stopAfterPlanTools(planMode, uuid.NullUUID{})
+		want[chattool.CompleteGoalToolName] = struct{}{}
+		require.Equal(t, want, stopAfterBehaviorTools(
 			planMode,
 			database.NullChatMode{},
 			uuid.NullUUID{},
@@ -855,6 +866,7 @@ func TestRegenerateChatTitle_PersistsAndBroadcasts(t *testing.T) {
 		configCache: newChatConfigCache(context.Background(), db, clock),
 	}
 
+	expectNoCurrentGoal(db, chatID)
 	db.EXPECT().GetChatModelConfigByID(gomock.Any(), modelConfigID).Return(modelConfig, nil)
 	providerID := uuid.New()
 	db.EXPECT().GetAIProviders(gomock.Any(), gomock.Any()).Return([]database.AIProvider{{
@@ -1021,6 +1033,7 @@ func TestRegenerateChatTitle_PersistsAndBroadcasts_IdleChatReleasesManualLock(t 
 		configCache: newChatConfigCache(context.Background(), db, clock),
 	}
 
+	expectNoCurrentGoal(db, chatID)
 	db.EXPECT().GetChatModelConfigByID(gomock.Any(), modelConfigID).Return(modelConfig, nil)
 	providerID := uuid.New()
 	db.EXPECT().GetAIProviders(gomock.Any(), gomock.Any()).Return([]database.AIProvider{{
@@ -4050,6 +4063,7 @@ func TestProcessChat_IgnoresStaleControlNotification(t *testing.T) {
 	db.EXPECT().GetChatUsageLimitConfig(gomock.Any()).Return(
 		database.ChatUsageLimitConfig{}, sql.ErrNoRows,
 	).AnyTimes()
+	expectNoCurrentGoal(db, chatID)
 	db.EXPECT().GetChatMessagesForPromptByChatID(gomock.Any(), chatID).Return(nil, nil).AnyTimes()
 
 	chat := database.Chat{ID: chatID, LastModelConfigID: uuid.New()}
@@ -5824,6 +5838,7 @@ func TestAutoPromote_InsertFailureSkipsStatusUpdate(t *testing.T) {
 	db.EXPECT().GetChatUsageLimitConfig(gomock.Any()).Return(
 		database.ChatUsageLimitConfig{}, sql.ErrNoRows,
 	).AnyTimes()
+	expectNoCurrentGoal(db, chatID)
 	db.EXPECT().GetChatMessagesForPromptByChatID(gomock.Any(), chatID).Return(nil, nil).AnyTimes()
 
 	// The deferred cleanup transaction: InsertChatMessages fails,

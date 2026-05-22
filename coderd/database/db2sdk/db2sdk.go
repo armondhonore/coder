@@ -21,6 +21,7 @@ import (
 	agentproto "github.com/coder/coder/v2/agent/proto"
 	aibridgeutils "github.com/coder/coder/v2/aibridge/utils"
 	"github.com/coder/coder/v2/coderd/database"
+	"github.com/coder/coder/v2/coderd/database/db2sdk/chatgoal"
 	"github.com/coder/coder/v2/coderd/database/dbtime"
 	"github.com/coder/coder/v2/coderd/externalauth/gitprovider"
 	"github.com/coder/coder/v2/coderd/rbac"
@@ -1739,40 +1740,7 @@ func decodeChatLastError(raw pqtype.NullRawMessage) *codersdk.ChatError {
 
 // ChatGoal converts a database.ChatGoal to a codersdk.ChatGoal.
 func ChatGoal(goal database.ChatGoal) codersdk.ChatGoal {
-	converted := codersdk.ChatGoal{
-		ID:               goal.ID,
-		RootChatID:       goal.RootChatID,
-		Objective:        goal.Objective,
-		Status:           codersdk.ChatGoalStatus(goal.Status),
-		CreatedByUserID:  goal.CreatedByUserID,
-		CompletedByAgent: goal.CompletedByAgent,
-		CreatedAt:        goal.CreatedAt,
-		UpdatedAt:        goal.UpdatedAt,
-	}
-	if goal.CreatedFromChatID.Valid {
-		createdFromChatID := goal.CreatedFromChatID.UUID
-		converted.CreatedFromChatID = &createdFromChatID
-	}
-	if goal.CompletionSummary.Valid {
-		converted.CompletionSummary = &goal.CompletionSummary.String
-	}
-	if goal.CompletedByUserID.Valid {
-		completedByUserID := goal.CompletedByUserID.UUID
-		converted.CompletedByUserID = &completedByUserID
-	}
-	if goal.CompletedAt.Valid {
-		completedAt := goal.CompletedAt.Time
-		converted.CompletedAt = &completedAt
-	}
-	if goal.ClearedAt.Valid {
-		clearedAt := goal.ClearedAt.Time
-		converted.ClearedAt = &clearedAt
-	}
-	if goal.ReplacedAt.Valid {
-		replacedAt := goal.ReplacedAt.Time
-		converted.ReplacedAt = &replacedAt
-	}
-	return converted
+	return chatgoal.ToSDK(goal)
 }
 
 // Chat converts a database.Chat to a codersdk.Chat. It coalesces
