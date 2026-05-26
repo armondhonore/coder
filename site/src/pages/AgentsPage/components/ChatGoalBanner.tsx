@@ -11,58 +11,50 @@ import { Badge } from "#/components/Badge/Badge";
 import { Button } from "#/components/Button/Button";
 
 export type ChatGoalAction = Exclude<TypesGen.ChatGoalMutationAction, "set">;
+type CurrentChatGoalStatus = Extract<
+	TypesGen.ChatGoalStatus,
+	"active" | "paused"
+>;
 
 type ChatGoalBannerProps = {
 	goal: TypesGen.ChatGoal | undefined;
+	canMutateGoal?: boolean;
 	isActionPending?: boolean;
 	isActionDisabled?: boolean;
-	onAction: (action: ChatGoalAction) => void;
+	onAction: (action: ChatGoalAction) => Promise<void> | void;
 };
 
-const statusLabel = (status: TypesGen.ChatGoalStatus): string => {
+const isCurrentGoalStatus = (
+	status: TypesGen.ChatGoalStatus,
+): status is CurrentChatGoalStatus =>
+	status === "active" || status === "paused";
+
+const statusLabel = (status: CurrentChatGoalStatus): string => {
 	switch (status) {
 		case "active":
 			return "Active";
 		case "paused":
 			return "Paused";
-		case "complete":
-			return "Complete";
-		case "cleared":
-			return "Cleared";
-		case "replaced":
-			return "Replaced";
 	}
 };
 
 const statusVariant = (
-	status: TypesGen.ChatGoalStatus,
+	status: CurrentChatGoalStatus,
 ): ComponentProps<typeof Badge>["variant"] => {
 	switch (status) {
 		case "active":
 			return "info";
 		case "paused":
 			return "warning";
-		case "complete":
-			return "green";
-		case "cleared":
-		case "replaced":
-			return "default";
 	}
 };
 
-const actionsForStatus = (
-	status: TypesGen.ChatGoalStatus,
-): ChatGoalAction[] => {
+const actionsForStatus = (status: CurrentChatGoalStatus): ChatGoalAction[] => {
 	switch (status) {
 		case "active":
 			return ["pause", "complete", "clear"];
 		case "paused":
 			return ["resume", "clear"];
-		case "complete":
-			return ["clear"];
-		case "cleared":
-		case "replaced":
-			return [];
 	}
 };
 
@@ -92,23 +84,18 @@ const ActionIcon = ({ action }: { action: ChatGoalAction }) => {
 	}
 };
 
-const visibleGoalStatuses: ReadonlySet<TypesGen.ChatGoalStatus> = new Set([
-	"active",
-	"paused",
-	"complete",
-]);
-
 export const ChatGoalBanner: FC<ChatGoalBannerProps> = ({
 	goal,
+	canMutateGoal = true,
 	isActionPending = false,
 	isActionDisabled = false,
 	onAction,
 }) => {
-	if (!goal || !visibleGoalStatuses.has(goal.status)) {
+	if (!goal || !isCurrentGoalStatus(goal.status)) {
 		return null;
 	}
 
-	const actions = actionsForStatus(goal.status);
+	const actions = canMutateGoal ? actionsForStatus(goal.status) : [];
 	const disabled = isActionPending || isActionDisabled;
 
 	return (
@@ -128,11 +115,6 @@ export const ChatGoalBanner: FC<ChatGoalBannerProps> = ({
 					<p className="whitespace-pre-wrap break-words text-content-secondary">
 						{goal.objective.trim() || "No objective provided."}
 					</p>
-					{goal.completion_summary ? (
-						<p className="whitespace-pre-wrap break-words text-xs text-content-secondary">
-							Summary: {goal.completion_summary}
-						</p>
-					) : null}
 				</div>
 			</div>
 			{actions.length > 0 ? (
@@ -143,7 +125,11 @@ export const ChatGoalBanner: FC<ChatGoalBannerProps> = ({
 							size="xs"
 							variant={action === "clear" ? "subtle" : "outline"}
 							disabled={disabled}
-							onClick={() => onAction(action)}
+							onClick={() => {
+								void (async () => {
+									await onAction(action);
+								})().catch(() => undefined);
+							}}
 						>
 							<ActionIcon action={action} />
 							{actionLabel(action)}

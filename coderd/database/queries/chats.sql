@@ -1875,7 +1875,7 @@ SET
 WHERE
     root_chat_id = @root_chat_id::uuid
     AND id = @id::uuid
-    AND status IN ('active', 'paused', 'complete')
+    AND status IN ('active', 'paused')
 RETURNING *;
 
 -- name: CompleteChatGoalByID :one

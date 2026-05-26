@@ -59,6 +59,15 @@ describe("parseGoalCommand", () => {
 		});
 	});
 
+	it("rejects reserved commands with extra text", () => {
+		expect(parseGoalCommand("/goal clear the cache")).toMatchObject({
+			kind: "unsupported",
+		});
+		expect(parseGoalCommand("/goal complete the setup")).toMatchObject({
+			kind: "unsupported",
+		});
+	});
+
 	it("rejects empty escaped objectives and summary flags", () => {
 		expect(parseGoalCommand("/goal --")).toMatchObject({
 			kind: "unsupported",
@@ -70,6 +79,9 @@ describe("parseGoalCommand", () => {
 
 	it("rejects unsupported budget commands", () => {
 		expect(parseGoalCommand("/goal budget 10 turns")).toMatchObject({
+			kind: "unsupported",
+		});
+		expect(parseGoalCommand("/goal budget=10")).toMatchObject({
 			kind: "unsupported",
 		});
 		expect(parseGoalCommand("/goal --budget 10")).toMatchObject({
@@ -86,6 +98,17 @@ describe("parseGoalCommand", () => {
 		});
 		expect(parseGoalCommand("/goal --turn-limit 5 fix it")).toMatchObject({
 			kind: "unsupported",
+		});
+	});
+
+	it("keeps hyphenated objectives that start with unsupported command words", () => {
+		expect(parseGoalCommand("/goal budget-friendly cleanup")).toMatchObject({
+			kind: "set",
+			objective: "budget-friendly cleanup",
+		});
+		expect(parseGoalCommand("/goal --turn-based test plan")).toMatchObject({
+			kind: "set",
+			objective: "--turn-based test plan",
 		});
 	});
 

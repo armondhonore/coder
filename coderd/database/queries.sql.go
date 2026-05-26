@@ -6502,7 +6502,7 @@ SET
 WHERE
     root_chat_id = $1::uuid
     AND id = $2::uuid
-    AND status IN ('active', 'paused', 'complete')
+    AND status IN ('active', 'paused')
 RETURNING id, root_chat_id, created_from_chat_id, objective, status, completion_summary, created_by_user_id, completed_by_user_id, completed_by_agent, created_at, updated_at, completed_at, cleared_at, replaced_at
 `
 

@@ -2195,6 +2195,19 @@ describe("mergeWatchedChatSummary", () => {
 		).toBe(watchedGoal);
 	});
 
+	it("clears current goals when a goal_change carries a terminal goal", () => {
+		const cachedGoal = makeGoal({ objective: "Old goal" });
+		const completedGoal = makeGoal({ status: "complete" });
+		const cachedChat = makeChat("chat-1", { goal: cachedGoal });
+		const watchedChat = makeChat("chat-1", { goal: completedGoal });
+
+		expect(
+			mergeWatchedChatSummary(cachedChat, watchedChat, {
+				eventKind: "goal_change",
+			}).goal,
+		).toBeUndefined();
+	});
+
 	it("preserves cached goals on non-goal events", () => {
 		const cachedGoal = makeGoal({ objective: "Completed goal" });
 		const cachedChat = makeChat("chat-1", {
@@ -2739,6 +2752,26 @@ describe("chat goal query factories", () => {
 		seedInfiniteChats(queryClient, [makeChat(chatId, { goal })]);
 
 		setCachedChatGoal(queryClient, chatId, undefined);
+
+		expect(
+			queryClient.getQueryData<TypesGen.Chat>(chatKey(chatId))?.goal,
+		).toBeUndefined();
+		expect(readInfiniteChats(queryClient)?.[0]?.goal).toBeUndefined();
+		expect(queryClient.getQueryData(chatGoalKey(chatId))).toEqual({
+			goal: undefined,
+		});
+	});
+
+	it("clears cached chat goal from terminal mutation responses", () => {
+		const queryClient = createTestQueryClient();
+		const chatId = "chat-1";
+		const goal = makeGoal();
+		const completedGoal = makeGoal({ status: "complete" });
+		queryClient.setQueryData(chatKey(chatId), makeChat(chatId, { goal }));
+		seedInfiniteChats(queryClient, [makeChat(chatId, { goal })]);
+		queryClient.setQueryData(chatGoalKey(chatId), { goal });
+
+		setCachedChatGoal(queryClient, chatId, completedGoal);
 
 		expect(
 			queryClient.getQueryData<TypesGen.Chat>(chatKey(chatId))?.goal,

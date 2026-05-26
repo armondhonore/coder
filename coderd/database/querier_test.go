@@ -12201,11 +12201,12 @@ func TestChatGoalPersistence(t *testing.T) {
 		org := dbgen.Organization(t, store, database.Organization{})
 		dbgen.OrganizationMember(t, store, database.OrganizationMember{UserID: owner.ID, OrganizationID: org.ID})
 
-		dbgen.ChatProvider(t, store, database.ChatProvider{
-			Provider:    "openai",
-			DisplayName: "OpenAI",
-			APIKey:      "test-key",
-			Enabled:     true,
+		provider := dbgen.ChatProvider(t, store, database.ChatProvider{
+			Provider:             "openai",
+			DisplayName:          "OpenAI",
+			APIKey:               "test-key",
+			Enabled:              true,
+			CentralApiKeyEnabled: true,
 		})
 
 		modelCfg, err := store.InsertChatModelConfig(ctx, database.InsertChatModelConfigParams{
@@ -12219,6 +12220,7 @@ func TestChatGoalPersistence(t *testing.T) {
 			ContextLimit:         128000,
 			CompressionThreshold: 80,
 			Options:              json.RawMessage(`{}`),
+			AIProviderID:         uuid.NullUUID{UUID: provider.ID, Valid: true},
 		})
 		require.NoError(t, err)
 
@@ -12342,6 +12344,12 @@ func TestChatGoalPersistence(t *testing.T) {
 		require.Equal(t, summary, completed.CompletionSummary.String)
 		require.True(t, completed.CompletedAt.Valid)
 		require.Equal(t, owner.ID, completed.CompletedByUserID.UUID)
+
+		_, err = store.ClearChatGoalByID(ctx, database.ClearChatGoalByIDParams{
+			RootChatID: chat.ID,
+			ID:         goal.ID,
+		})
+		require.ErrorIs(t, err, sql.ErrNoRows)
 
 		_, err = store.GetCurrentChatGoalByRootChatID(ctx, chat.ID)
 		require.ErrorIs(t, err, sql.ErrNoRows)

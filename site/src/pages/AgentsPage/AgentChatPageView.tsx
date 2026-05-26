@@ -162,7 +162,9 @@ interface AgentChatPageViewProps {
 
 	// Goal state and handlers.
 	goal?: TypesGen.ChatGoal;
+	canMutateGoal?: boolean;
 	isGoalActionPending?: boolean;
+	isGoalActionDisabled?: boolean;
 	onGoalAction?: (action: ChatGoalAction) => Promise<void> | void;
 
 	// Chat action handlers.
@@ -250,7 +252,9 @@ export const AgentChatPageView: FC<AgentChatPageViewProps> = ({
 	sshCommand,
 	handleCommit,
 	goal,
+	canMutateGoal = true,
 	isGoalActionPending = false,
+	isGoalActionDisabled = false,
 	onGoalAction = () => {},
 	handleInterrupt,
 	handleDeleteQueuedMessage,
@@ -571,8 +575,9 @@ export const AgentChatPageView: FC<AgentChatPageViewProps> = ({
 						<div className="shrink-0 overflow-y-auto px-4 pb-3 md:pb-0 [scrollbar-gutter:stable] [scrollbar-width:thin]">
 							<ChatGoalBanner
 								goal={goal}
+								canMutateGoal={canMutateGoal}
 								isActionPending={isGoalActionPending}
-								isActionDisabled={isInputDisabled}
+								isActionDisabled={isGoalActionDisabled}
 								onAction={onGoalAction}
 							/>
 							<ChatPageInput

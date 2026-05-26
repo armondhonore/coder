@@ -52,19 +52,17 @@ export const Paused: Story = {
 	},
 };
 
-export const Complete: Story = {
+export const ReadOnlyChildGoal: Story = {
 	args: {
-		goal: goal({
-			status: "complete",
-			completion_summary: "All goal UX work is complete.",
-		}),
+		goal: goal(),
+		canMutateGoal: false,
 		onAction: fn(),
 	},
 	play: async ({ canvasElement, args }) => {
 		const canvas = within(canvasElement);
-		expect(canvas.getByText("Complete")).toBeVisible();
-		expect(canvas.getByText(/All goal UX work is complete/)).toBeVisible();
-		await userEvent.click(canvas.getByRole("button", { name: /Clear/i }));
-		expect(args.onAction).toHaveBeenCalledWith("clear");
+		expect(canvas.getByLabelText("Current goal")).toBeVisible();
+		expect(canvas.getByText("Active")).toBeVisible();
+		expect(canvas.queryByRole("button", { name: /Pause/i })).toBeNull();
+		expect(args.onAction).not.toHaveBeenCalled();
 	},
 };

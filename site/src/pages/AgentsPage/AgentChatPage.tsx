@@ -218,6 +218,22 @@ export const runPromoteQueuedMessage = async (params: {
 	}
 };
 
+const goalActionAllowed = (
+	goal: TypesGen.ChatGoal,
+	action: Exclude<TypesGen.ChatGoalMutationAction, "set">,
+): boolean => {
+	switch (goal.status) {
+		case "active":
+			return action === "pause" || action === "complete" || action === "clear";
+		case "paused":
+			return action === "resume" || action === "clear";
+		case "complete":
+		case "cleared":
+		case "replaced":
+			return false;
+	}
+};
+
 /** @internal Exported for testing. */
 export const runGoalAction = async (params: {
 	agentId: string | undefined;
@@ -245,7 +261,7 @@ export const runGoalAction = async (params: {
 	if (!agentId) {
 		return;
 	}
-	if (!goal?.id) {
+	if (!goal?.id || !goalActionAllowed(goal, action)) {
 		onMissingGoal?.();
 		return;
 	}
@@ -253,7 +269,7 @@ export const runGoalAction = async (params: {
 		chatId: agentId,
 		mutation: {
 			action,
-			goal_id: goal?.id,
+			goal_id: goal.id,
 			completion_summary: completionSummary,
 		},
 	});
@@ -928,10 +944,10 @@ const AgentChatPage: FC = () => {
 	const chatAuthorizationObject =
 		chatRecord !== undefined
 			? {
-					resource_type: "chat" as const,
-					owner_id: chatRecord.owner_id,
-					organization_id: chatRecord.organization_id,
-				}
+				resource_type: "chat" as const,
+				owner_id: chatRecord.owner_id,
+				organization_id: chatRecord.organization_id,
+			}
 			: undefined;
 	const chatAuthorizationChecks: TypesGen.AuthorizationRequest["checks"] = {};
 	if (chatAuthorizationObject !== undefined && shouldCheckCanShareChat) {
@@ -1223,6 +1239,8 @@ const AgentChatPage: FC = () => {
 	const isInputDisabled =
 		!hasModelOptions || isArchived || isChatSettingsPending || isViewerNotOwner;
 	const canUpdateChatWorkspace = !isArchived && !isViewerNotOwner;
+	const canMutateGoal = isRootChat && !isViewerNotOwner;
+	const isGoalActionDisabled = isArchived || isViewerNotOwner;
 	const selectedWorkspaceId = chatQuery.data?.workspace_id ?? null;
 
 	const isWorkspaceLoading =
@@ -1244,6 +1262,10 @@ const AgentChatPage: FC = () => {
 		action: Exclude<TypesGen.ChatGoalMutationAction, "set">,
 		completionSummary?: string,
 	) => {
+		if (!canMutateGoal) {
+			toast.warning("Goals can only be changed from the root chat.");
+			return;
+		}
 		await runGoalAction({
 			agentId,
 			goal: chatQuery.data?.goal,
@@ -1273,6 +1295,10 @@ const AgentChatPage: FC = () => {
 		}
 		switch (command.kind) {
 			case "set":
+				if (!canMutateGoal) {
+					toast.warning("Goals can only be changed from the root chat.");
+					return null;
+				}
 				return { message: command.objective, mutation: command.mutation };
 			case "show": {
 				const response = await queryClient
@@ -1796,7 +1822,9 @@ const AgentChatPage: FC = () => {
 			sshCommand={sshCommand}
 			handleCommit={handleCommit}
 			goal={chatQuery.data?.goal}
+			canMutateGoal={canMutateGoal}
 			isGoalActionPending={isUpdateChatGoalPending}
+			isGoalActionDisabled={isGoalActionDisabled}
 			onGoalAction={handleGoalAction}
 			handleInterrupt={handleInterrupt}
 			handleDeleteQueuedMessage={handleDeleteQueuedMessage}

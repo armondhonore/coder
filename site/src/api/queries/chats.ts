@@ -343,7 +343,9 @@ export const mergeWatchedChatSummary = (
 		isFreshEnough || isSummaryEvent
 			? watchedChat.last_turn_summary
 			: cachedChat.last_turn_summary;
-	const nextGoal = isGoalEvent ? watchedChat.goal : cachedChat.goal;
+	const nextGoal = isGoalEvent
+		? currentChatGoal(watchedChat.goal)
+		: cachedChat.goal;
 	const nextHasUnread =
 		isFreshEnough && isStatusEvent && watchedChat.id !== activeChatId
 			? true
@@ -866,6 +868,15 @@ type UpdateChatGoalVariables = {
 	mutation: TypesGen.ChatGoalMutation;
 };
 
+function currentChatGoal(
+	goal: TypesGen.ChatGoal | undefined,
+): TypesGen.ChatGoal | undefined {
+	if (goal?.status === "active" || goal?.status === "paused") {
+		return goal;
+	}
+	return undefined;
+}
+
 export const setCachedChatGoal = (
 	queryClient: QueryClient,
 	chatId: string,
@@ -904,11 +915,12 @@ export const setCachedChatGoal = (
 		return undefined;
 	};
 
+	const cachedGoal = currentChatGoal(goal);
 	const familyId =
 		goal?.root_chat_id ?? findCachedChatFamilyID(chatId) ?? chatId;
 	const isFamilyChat = (chat: TypesGen.Chat) => chatRootId(chat) === familyId;
 	const applyGoal = (chat: TypesGen.Chat) =>
-		chat.goal === goal ? chat : { ...chat, goal };
+		chat.goal === cachedGoal ? chat : { ...chat, goal: cachedGoal };
 	const applyGoalToFamily = (chat: TypesGen.Chat) =>
 		isFamilyChat(chat) ? applyGoal(chat) : chat;
 	const applyGoalToTree = (chat: TypesGen.Chat) => {
@@ -962,10 +974,10 @@ export const setCachedChatGoal = (
 				);
 			},
 		},
-		() => ({ goal }),
+		() => ({ goal: cachedGoal }),
 	);
 	queryClient.setQueryData<TypesGen.ChatGoalResponse>(chatGoalKey(chatId), {
-		goal,
+		goal: cachedGoal,
 	});
 };
 

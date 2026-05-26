@@ -15,10 +15,30 @@ type ParsedGoalCommand =
 	| { kind: "unsupported"; reason: string };
 
 const commandPrefix = "/goal";
-const turnCapFlagPattern = /^--(?:max-)?(?:turns?|turn-cap|turn-limit)\b/i;
-const budgetFlagPattern = /^(?:--)?budget\b/i;
+const summaryFlag = "--summary";
+const budgetFlags = new Set(["--budget"]);
+const turnCapFlags = new Set([
+	"--turn",
+	"--turns",
+	"--max-turn",
+	"--max-turns",
+	"--turn-cap",
+	"--turn-limit",
+]);
 
-const completionSummaryPrefix = "complete --summary";
+const isFlagToken = (token: string, flags: ReadonlySet<string>): boolean => {
+	for (const flag of flags) {
+		if (token === flag || token.startsWith(`${flag}=`)) {
+			return true;
+		}
+	}
+	return false;
+};
+
+const unsupportedReservedCommand = (command: string): ParsedGoalCommand => ({
+	kind: "unsupported",
+	reason: `Use /goal ${command} without extra text, or /goal -- ${command} ... to set an objective starting with ${command}.`,
+});
 
 const makeLifecycleMutation = (
 	action: Exclude<TypesGen.ChatGoalMutationAction, "set">,
@@ -48,9 +68,12 @@ export const parseGoalCommand = (message: string): ParsedGoalCommand | null => {
 	}
 
 	const firstToken = args.split(/\s+/, 1)[0] ?? "";
+	const firstTokenLower = firstToken.toLowerCase();
 	if (
-		budgetFlagPattern.test(firstToken) ||
-		turnCapFlagPattern.test(firstToken)
+		firstTokenLower === "budget" ||
+		firstTokenLower.startsWith("budget=") ||
+		isFlagToken(firstTokenLower, budgetFlags) ||
+		isFlagToken(firstTokenLower, turnCapFlags)
 	) {
 		return {
 			kind: "unsupported",
@@ -74,32 +97,42 @@ export const parseGoalCommand = (message: string): ParsedGoalCommand | null => {
 		};
 	}
 
-	const normalizedArgs = args.toLocaleLowerCase("en-US");
-	if (normalizedArgs === "clear") {
-		return makeLifecycleMutation("clear");
+	const rest = args.slice(firstToken.length).trim();
+	if (firstTokenLower === "clear") {
+		return rest
+			? unsupportedReservedCommand("clear")
+			: makeLifecycleMutation("clear");
 	}
-	if (normalizedArgs === "pause") {
-		return makeLifecycleMutation("pause");
+	if (firstTokenLower === "pause") {
+		return rest
+			? unsupportedReservedCommand("pause")
+			: makeLifecycleMutation("pause");
 	}
-	if (normalizedArgs === "resume") {
-		return makeLifecycleMutation("resume");
+	if (firstTokenLower === "resume") {
+		return rest
+			? unsupportedReservedCommand("resume")
+			: makeLifecycleMutation("resume");
 	}
-	if (normalizedArgs === "complete") {
-		return makeLifecycleMutation("complete");
-	}
-	if (
-		normalizedArgs === completionSummaryPrefix ||
-		normalizedArgs.startsWith(`${completionSummaryPrefix} `) ||
-		normalizedArgs.startsWith(`${completionSummaryPrefix}\n`)
-	) {
-		const summary = args.slice(completionSummaryPrefix.length).trim();
-		if (!summary) {
-			return {
-				kind: "unsupported",
-				reason: "Provide a summary after /goal complete --summary.",
-			};
+	if (firstTokenLower === "complete") {
+		if (!rest) {
+			return makeLifecycleMutation("complete");
 		}
-		return makeLifecycleMutation("complete", summary);
+		const restLower = rest.toLowerCase();
+		if (
+			restLower === summaryFlag ||
+			restLower.startsWith(`${summaryFlag} `) ||
+			restLower.startsWith(`${summaryFlag}\n`)
+		) {
+			const summary = rest.slice(summaryFlag.length).trim();
+			if (!summary) {
+				return {
+					kind: "unsupported",
+					reason: "Provide a summary after /goal complete --summary.",
+				};
+			}
+			return makeLifecycleMutation("complete", summary);
+		}
+		return unsupportedReservedCommand("complete");
 	}
 
 	return {
