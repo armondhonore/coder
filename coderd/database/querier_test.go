@@ -12345,11 +12345,60 @@ func TestChatGoalPersistence(t *testing.T) {
 		require.True(t, completed.CompletedAt.Valid)
 		require.Equal(t, owner.ID, completed.CompletedByUserID.UUID)
 
-		_, err = store.ClearChatGoalByID(ctx, database.ClearChatGoalByIDParams{
+		current, err = store.GetCurrentChatGoalByRootChatID(ctx, chat.ID)
+		require.NoError(t, err)
+		require.Equal(t, database.ChatGoalStatusComplete, current.Status)
+		require.Equal(t, goal.ID, current.ID)
+
+		cleared, err := store.ClearChatGoalByID(ctx, database.ClearChatGoalByIDParams{
 			RootChatID: chat.ID,
 			ID:         goal.ID,
 		})
+		require.NoError(t, err)
+		require.Equal(t, database.ChatGoalStatusCleared, cleared.Status)
+		require.False(t, cleared.CompletedAt.Valid)
+		require.False(t, cleared.CompletionSummary.Valid)
+		require.False(t, cleared.CompletedByUserID.Valid)
+		require.False(t, cleared.CompletedByAgent)
+		require.True(t, cleared.ClearedAt.Valid)
+
+		_, err = store.GetCurrentChatGoalByRootChatID(ctx, chat.ID)
 		require.ErrorIs(t, err, sql.ErrNoRows)
+	})
+
+	t.Run("LatestGoalControlsVisibility", func(t *testing.T) {
+		t.Parallel()
+
+		store, ctx, owner, chat := setup(t)
+		first := insertGoal(t, store, ctx, chat, owner, "finished goal")
+		completed, err := store.CompleteChatGoalByID(ctx, database.CompleteChatGoalByIDParams{
+			RootChatID: chat.ID,
+			ID:         first.ID,
+			CompletionSummary: sql.NullString{
+				String: "done",
+				Valid:  true,
+			},
+			CompletedByUserID: uuid.NullUUID{UUID: owner.ID, Valid: true},
+		})
+		require.NoError(t, err)
+		require.Equal(t, database.ChatGoalStatusComplete, completed.Status)
+
+		current, err := store.GetCurrentChatGoalByRootChatID(ctx, chat.ID)
+		require.NoError(t, err)
+		require.Equal(t, first.ID, current.ID)
+		require.Equal(t, database.ChatGoalStatusComplete, current.Status)
+
+		second := insertGoal(t, store, ctx, chat, owner, "next goal")
+		current, err = store.GetCurrentChatGoalByRootChatID(ctx, chat.ID)
+		require.NoError(t, err)
+		require.Equal(t, second.ID, current.ID)
+		require.Equal(t, database.ChatGoalStatusActive, current.Status)
+
+		_, err = store.ClearChatGoalByID(ctx, database.ClearChatGoalByIDParams{
+			RootChatID: chat.ID,
+			ID:         second.ID,
+		})
+		require.NoError(t, err)
 
 		_, err = store.GetCurrentChatGoalByRootChatID(ctx, chat.ID)
 		require.ErrorIs(t, err, sql.ErrNoRows)

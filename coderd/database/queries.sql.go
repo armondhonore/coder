@@ -6497,12 +6497,16 @@ UPDATE
     chat_goals
 SET
     status = 'cleared',
+    completion_summary = NULL,
+    completed_by_user_id = NULL,
+    completed_by_agent = FALSE,
+    completed_at = NULL,
     updated_at = NOW(),
     cleared_at = NOW()
 WHERE
     root_chat_id = $1::uuid
     AND id = $2::uuid
-    AND status IN ('active', 'paused')
+    AND status IN ('active', 'paused', 'complete')
 RETURNING id, root_chat_id, created_from_chat_id, objective, status, completion_summary, created_by_user_id, completed_by_user_id, completed_by_agent, created_at, updated_at, completed_at, cleared_at, replaced_at
 `
 
@@ -8656,13 +8660,23 @@ func (q *sqlQuerier) GetChildChatsByParentIDs(ctx context.Context, arg GetChildC
 
 const getCurrentChatGoalByRootChatID = `-- name: GetCurrentChatGoalByRootChatID :one
 SELECT
-    id, root_chat_id, created_from_chat_id, objective, status, completion_summary, created_by_user_id, completed_by_user_id, completed_by_agent, created_at, updated_at, completed_at, cleared_at, replaced_at
+    chat_goals.id, chat_goals.root_chat_id, chat_goals.created_from_chat_id, chat_goals.objective, chat_goals.status, chat_goals.completion_summary, chat_goals.created_by_user_id, chat_goals.completed_by_user_id, chat_goals.completed_by_agent, chat_goals.created_at, chat_goals.updated_at, chat_goals.completed_at, chat_goals.cleared_at, chat_goals.replaced_at
 FROM
     chat_goals
 WHERE
-    root_chat_id = $1::uuid
-    AND status IN ('active', 'paused')
-LIMIT 1
+    id = (
+        SELECT
+            id
+        FROM
+            chat_goals
+        WHERE
+            root_chat_id = $1::uuid
+        ORDER BY
+            created_at DESC,
+            id DESC
+        LIMIT 1
+    )
+    AND status IN ('active', 'paused', 'complete')
 `
 
 func (q *sqlQuerier) GetCurrentChatGoalByRootChatID(ctx context.Context, rootChatID uuid.UUID) (ChatGoal, error) {
@@ -8688,13 +8702,25 @@ func (q *sqlQuerier) GetCurrentChatGoalByRootChatID(ctx context.Context, rootCha
 }
 
 const getCurrentChatGoalsByRootChatIDs = `-- name: GetCurrentChatGoalsByRootChatIDs :many
+WITH latest_goal_ids AS (
+    SELECT DISTINCT ON (root_chat_id)
+        id
+    FROM
+        chat_goals
+    WHERE
+        root_chat_id = ANY($1::uuid[])
+    ORDER BY
+        root_chat_id,
+        created_at DESC,
+        id DESC
+)
 SELECT
-    id, root_chat_id, created_from_chat_id, objective, status, completion_summary, created_by_user_id, completed_by_user_id, completed_by_agent, created_at, updated_at, completed_at, cleared_at, replaced_at
+    chat_goals.id, chat_goals.root_chat_id, chat_goals.created_from_chat_id, chat_goals.objective, chat_goals.status, chat_goals.completion_summary, chat_goals.created_by_user_id, chat_goals.completed_by_user_id, chat_goals.completed_by_agent, chat_goals.created_at, chat_goals.updated_at, chat_goals.completed_at, chat_goals.cleared_at, chat_goals.replaced_at
 FROM
     chat_goals
+JOIN latest_goal_ids ON latest_goal_ids.id = chat_goals.id
 WHERE
-    root_chat_id = ANY($1::uuid[])
-    AND status IN ('active', 'paused')
+    chat_goals.status IN ('active', 'paused', 'complete')
 `
 
 func (q *sqlQuerier) GetCurrentChatGoalsByRootChatIDs(ctx context.Context, rootChatIds []uuid.UUID) ([]ChatGoal, error) {

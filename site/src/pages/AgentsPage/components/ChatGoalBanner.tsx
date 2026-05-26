@@ -13,7 +13,7 @@ import { Button } from "#/components/Button/Button";
 export type ChatGoalAction = Exclude<TypesGen.ChatGoalMutationAction, "set">;
 type CurrentChatGoalStatus = Extract<
 	TypesGen.ChatGoalStatus,
-	"active" | "paused"
+	"active" | "paused" | "complete"
 >;
 
 type ChatGoalBannerProps = {
@@ -27,7 +27,7 @@ type ChatGoalBannerProps = {
 const isCurrentGoalStatus = (
 	status: TypesGen.ChatGoalStatus,
 ): status is CurrentChatGoalStatus =>
-	status === "active" || status === "paused";
+	status === "active" || status === "paused" || status === "complete";
 
 const statusLabel = (status: CurrentChatGoalStatus): string => {
 	switch (status) {
@@ -35,6 +35,8 @@ const statusLabel = (status: CurrentChatGoalStatus): string => {
 			return "Active";
 		case "paused":
 			return "Paused";
+		case "complete":
+			return "Complete";
 	}
 };
 
@@ -46,6 +48,8 @@ const statusVariant = (
 			return "info";
 		case "paused":
 			return "warning";
+		case "complete":
+			return "green";
 	}
 };
 
@@ -55,6 +59,8 @@ const actionsForStatus = (status: CurrentChatGoalStatus): ChatGoalAction[] => {
 			return ["pause", "complete", "clear"];
 		case "paused":
 			return ["resume", "clear"];
+		case "complete":
+			return ["clear"];
 	}
 };
 
@@ -115,6 +121,11 @@ export const ChatGoalBanner: FC<ChatGoalBannerProps> = ({
 					<p className="whitespace-pre-wrap break-words text-content-secondary">
 						{goal.objective.trim() || "No objective provided."}
 					</p>
+					{goal.completion_summary ? (
+						<p className="whitespace-pre-wrap break-words text-xs text-content-secondary">
+							Summary: {goal.completion_summary}
+						</p>
+					) : null}
 				</div>
 			</div>
 			{actions.length > 0 ? (

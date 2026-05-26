@@ -2195,11 +2195,24 @@ describe("mergeWatchedChatSummary", () => {
 		).toBe(watchedGoal);
 	});
 
-	it("clears current goals when a goal_change carries a terminal goal", () => {
+	it("applies completed goals from goal_change events", () => {
 		const cachedGoal = makeGoal({ objective: "Old goal" });
 		const completedGoal = makeGoal({ status: "complete" });
 		const cachedChat = makeChat("chat-1", { goal: cachedGoal });
 		const watchedChat = makeChat("chat-1", { goal: completedGoal });
+
+		expect(
+			mergeWatchedChatSummary(cachedChat, watchedChat, {
+				eventKind: "goal_change",
+			}).goal,
+		).toBe(completedGoal);
+	});
+
+	it("clears current goals when a goal_change carries a cleared goal", () => {
+		const cachedGoal = makeGoal({ objective: "Old goal" });
+		const clearedGoal = makeGoal({ status: "cleared" });
+		const cachedChat = makeChat("chat-1", { goal: cachedGoal });
+		const watchedChat = makeChat("chat-1", { goal: clearedGoal });
 
 		expect(
 			mergeWatchedChatSummary(cachedChat, watchedChat, {
@@ -2762,7 +2775,7 @@ describe("chat goal query factories", () => {
 		});
 	});
 
-	it("clears cached chat goal from terminal mutation responses", () => {
+	it("keeps cached chat goal from complete mutation responses", () => {
 		const queryClient = createTestQueryClient();
 		const chatId = "chat-1";
 		const goal = makeGoal();
@@ -2772,6 +2785,28 @@ describe("chat goal query factories", () => {
 		queryClient.setQueryData(chatGoalKey(chatId), { goal });
 
 		setCachedChatGoal(queryClient, chatId, completedGoal);
+
+		expect(
+			queryClient.getQueryData<TypesGen.Chat>(chatKey(chatId))?.goal,
+		).toStrictEqual(completedGoal);
+		expect(readInfiniteChats(queryClient)?.[0]?.goal).toStrictEqual(
+			completedGoal,
+		);
+		expect(queryClient.getQueryData(chatGoalKey(chatId))).toEqual({
+			goal: completedGoal,
+		});
+	});
+
+	it("clears cached chat goal from cleared mutation responses", () => {
+		const queryClient = createTestQueryClient();
+		const chatId = "chat-1";
+		const goal = makeGoal();
+		const clearedGoal = makeGoal({ status: "cleared" });
+		queryClient.setQueryData(chatKey(chatId), makeChat(chatId, { goal }));
+		seedInfiniteChats(queryClient, [makeChat(chatId, { goal })]);
+		queryClient.setQueryData(chatGoalKey(chatId), { goal });
+
+		setCachedChatGoal(queryClient, chatId, clearedGoal);
 
 		expect(
 			queryClient.getQueryData<TypesGen.Chat>(chatKey(chatId))?.goal,

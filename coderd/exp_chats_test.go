@@ -345,7 +345,29 @@ func TestChatGoalAPI(t *testing.T) {
 
 	current, err := client.GetChatGoal(ctx, chat.ID)
 	require.NoError(t, err)
+	require.NotNil(t, current.Goal)
+	require.Equal(t, codersdk.ChatGoalStatusComplete, current.Goal.Status)
+
+	gotChat, err = client.GetChat(ctx, chat.ID)
+	require.NoError(t, err)
+	require.NotNil(t, gotChat.Goal)
+	require.Equal(t, codersdk.ChatGoalStatusComplete, gotChat.Goal.Status)
+
+	cleared, err := client.UpdateChatGoal(ctx, chat.ID, codersdk.ChatGoalMutation{
+		Action: codersdk.ChatGoalMutationActionClear,
+		GoalID: &chat.Goal.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, cleared.Goal)
+	require.Equal(t, codersdk.ChatGoalStatusCleared, cleared.Goal.Status)
+
+	current, err = client.GetChatGoal(ctx, chat.ID)
+	require.NoError(t, err)
 	require.Nil(t, current.Goal)
+
+	gotChat, err = client.GetChat(ctx, chat.ID)
+	require.NoError(t, err)
+	require.Nil(t, gotChat.Goal)
 }
 
 func TestPostChats(t *testing.T) {

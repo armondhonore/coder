@@ -1796,22 +1796,44 @@ FROM chats_expanded;
 
 -- name: GetCurrentChatGoalByRootChatID :one
 SELECT
-    *
+    chat_goals.*
 FROM
     chat_goals
 WHERE
-    root_chat_id = @root_chat_id::uuid
-    AND status IN ('active', 'paused')
-LIMIT 1;
+    id = (
+        SELECT
+            id
+        FROM
+            chat_goals
+        WHERE
+            root_chat_id = @root_chat_id::uuid
+        ORDER BY
+            created_at DESC,
+            id DESC
+        LIMIT 1
+    )
+    AND status IN ('active', 'paused', 'complete');
 
 -- name: GetCurrentChatGoalsByRootChatIDs :many
+WITH latest_goal_ids AS (
+    SELECT DISTINCT ON (root_chat_id)
+        id
+    FROM
+        chat_goals
+    WHERE
+        root_chat_id = ANY(@root_chat_ids::uuid[])
+    ORDER BY
+        root_chat_id,
+        created_at DESC,
+        id DESC
+)
 SELECT
-    *
+    chat_goals.*
 FROM
     chat_goals
+JOIN latest_goal_ids ON latest_goal_ids.id = chat_goals.id
 WHERE
-    root_chat_id = ANY(@root_chat_ids::uuid[])
-    AND status IN ('active', 'paused');
+    chat_goals.status IN ('active', 'paused', 'complete');
 
 -- name: MarkCurrentChatGoalReplacedByRootChatID :many
 UPDATE
@@ -1870,12 +1892,16 @@ UPDATE
     chat_goals
 SET
     status = 'cleared',
+    completion_summary = NULL,
+    completed_by_user_id = NULL,
+    completed_by_agent = FALSE,
+    completed_at = NULL,
     updated_at = NOW(),
     cleared_at = NOW()
 WHERE
     root_chat_id = @root_chat_id::uuid
     AND id = @id::uuid
-    AND status IN ('active', 'paused')
+    AND status IN ('active', 'paused', 'complete')
 RETURNING *;
 
 -- name: CompleteChatGoalByID :one

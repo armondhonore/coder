@@ -62,6 +62,25 @@ export const Paused: Story = {
 	},
 };
 
+export const Complete: Story = {
+	args: {
+		goal: goal({
+			status: "complete",
+			completion_summary: "Verified and shipped.",
+		}),
+		onAction: fn(),
+	},
+	play: async ({ canvasElement, args }) => {
+		const canvas = within(canvasElement);
+		expect(canvas.getByText("Complete")).toBeVisible();
+		expect(canvas.getByText("Summary: Verified and shipped.")).toBeVisible();
+
+		await userEvent.click(canvas.getByRole("button", { name: /Clear/i }));
+
+		expect(args.onAction).toHaveBeenCalledWith("clear");
+	},
+};
+
 export const ReadOnlyChildGoal: Story = {
 	args: {
 		goal: goal(),

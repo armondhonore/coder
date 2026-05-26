@@ -228,6 +228,7 @@ const goalActionAllowed = (
 		case "paused":
 			return action === "resume" || action === "clear";
 		case "complete":
+			return action === "clear";
 		case "cleared":
 		case "replaced":
 			return false;

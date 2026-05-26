@@ -871,7 +871,11 @@ type UpdateChatGoalVariables = {
 function currentChatGoal(
 	goal: TypesGen.ChatGoal | undefined,
 ): TypesGen.ChatGoal | undefined {
-	if (goal?.status === "active" || goal?.status === "paused") {
+	if (
+		goal?.status === "active" ||
+		goal?.status === "paused" ||
+		goal?.status === "complete"
+	) {
 		return goal;
 	}
 	return undefined;
