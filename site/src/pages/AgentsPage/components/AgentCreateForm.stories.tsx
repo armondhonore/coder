@@ -165,7 +165,37 @@ type CreateChatSubmission = {
 	goalMutation?: TypesGen.ChatGoalMutation;
 };
 
-export const GoalCommandCreatesGoal: Story = {
+const enablePursueGoal = async (canvasElement: HTMLElement) => {
+	const canvas = within(canvasElement);
+	await userEvent.click(canvas.getByRole("button", { name: "More options" }));
+	await userEvent.click(
+		screen.getByRole("menuitemcheckbox", { name: "Pursue goal" }),
+	);
+};
+
+export const PursueGoalCreatesGoal: Story = {
+	args: {
+		...defaultArgs,
+		onCreateChat: fn().mockResolvedValue(undefined),
+		modelConfigs: defaultModelConfigs,
+	},
+	play: async ({ canvasElement, args }) => {
+		await enablePursueGoal(canvasElement);
+		await submitMessage(canvasElement, "fix the flaky tests");
+		await waitFor(() => {
+			expect(args.onCreateChat).toHaveBeenCalled();
+		});
+		expect(getCreateOptions(args.onCreateChat)).toMatchObject({
+			message: "fix the flaky tests",
+			goalMutation: {
+				action: "set",
+				objective: "fix the flaky tests",
+			},
+		});
+	},
+};
+
+export const SlashGoalSubmitsAsNormalText: Story = {
 	args: {
 		...defaultArgs,
 		onCreateChat: fn().mockResolvedValue(undefined),
@@ -177,11 +207,8 @@ export const GoalCommandCreatesGoal: Story = {
 			expect(args.onCreateChat).toHaveBeenCalled();
 		});
 		expect(getCreateOptions(args.onCreateChat)).toMatchObject({
-			message: "fix the flaky tests",
-			goalMutation: {
-				action: "set",
-				objective: "fix the flaky tests",
-			},
+			message: "/goal fix the flaky tests",
+			goalMutation: undefined,
 		});
 	},
 };

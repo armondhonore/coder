@@ -20,6 +20,7 @@ import { cn } from "#/utils/cn";
 import { pageTitle } from "#/utils/page";
 import {
 	AgentChatInput,
+	type AgentChatInputSendOptions,
 	type ChatMessageInputRef,
 } from "./components/AgentChatInput";
 import {
@@ -85,7 +86,8 @@ interface EditingState {
 	handleSendFromInput: (
 		message: string,
 		attachments?: readonly PendingAttachment[],
-	) => void;
+		options?: AgentChatInputSendOptions,
+	) => Promise<void>;
 	handleContentChange: (
 		content: string,
 		serializedEditorState: string,
@@ -104,6 +106,8 @@ interface AgentChatPageViewProps {
 	isArchived: boolean;
 	isSharedChat: boolean;
 	chatOwner: ChatOwnerInfo | undefined;
+	canUpdateOtherUserChat: boolean;
+	canUpdateOtherUserChatLoading: boolean;
 	canShareChat: boolean;
 	workspaceAgent?: TypesGen.WorkspaceAgent;
 	workspace?: TypesGen.Workspace;
@@ -217,6 +221,8 @@ export const AgentChatPageView: FC<AgentChatPageViewProps> = ({
 	isArchived,
 	isSharedChat,
 	chatOwner,
+	canUpdateOtherUserChat,
+	canUpdateOtherUserChatLoading,
 	canShareChat,
 	workspaceAgent,
 	workspace,
@@ -445,10 +451,14 @@ export const AgentChatPageView: FC<AgentChatPageViewProps> = ({
 	const chatOwnerLabel =
 		chatOwner?.name?.trim() ||
 		(chatOwnerUsername ? `@${chatOwnerUsername}` : "another user");
-	const isOtherUserReadOnly = !isArchived && chatOwner !== undefined;
-	const chatOwnerWarning = isOtherUserReadOnly
-		? `This chat is owned by ${chatOwnerLabel}. It is read-only.`
-		: undefined;
+	const chatOwnerWarning =
+		!isArchived && chatOwner !== undefined && !canUpdateOtherUserChatLoading
+			? canUpdateOtherUserChat
+				? `This is not your chat. Prompting here will use ${chatOwnerLabel}'s identity.`
+				: `This chat is owned by ${chatOwnerLabel}. You have read-only access.`
+			: undefined;
+	const topGoal =
+		goal?.status === "active" || goal?.status === "paused" ? goal : undefined;
 
 	const titleElement = (
 		<title>
@@ -529,6 +539,17 @@ export const AgentChatPageView: FC<AgentChatPageViewProps> = ({
 									This agent has been archived and is read-only.
 								</div>
 							)}
+							{topGoal && (
+								<div className="shrink-0 px-4 pt-3">
+									<ChatGoalBanner
+										goal={topGoal}
+										canMutateGoal={canMutateGoal}
+										isActionPending={isGoalActionPending}
+										isActionDisabled={isGoalActionDisabled}
+										onAction={onGoalAction}
+									/>
+								</div>
+							)}
 							<div
 								aria-hidden
 								className="pointer-events-none absolute inset-x-0 top-full z-10 h-3 sm:h-6 bg-surface-primary"
@@ -573,13 +594,6 @@ export const AgentChatPageView: FC<AgentChatPageViewProps> = ({
 							</div>
 						</ChatScrollContainer>
 						<div className="shrink-0 overflow-y-auto px-4 pb-3 md:pb-0 [scrollbar-gutter:stable] [scrollbar-width:thin]">
-							<ChatGoalBanner
-								goal={goal}
-								canMutateGoal={canMutateGoal}
-								isActionPending={isGoalActionPending}
-								isActionDisabled={isGoalActionDisabled}
-								onAction={onGoalAction}
-							/>
 							<ChatPageInput
 								organizationId={organizationId}
 								sendShortcut={sendShortcut}
@@ -601,6 +615,7 @@ export const AgentChatPageView: FC<AgentChatPageViewProps> = ({
 								agentSetupNotice={agentSetupNotice}
 								planModeEnabled={planModeEnabled}
 								onPlanModeToggle={onPlanModeToggle}
+								canPursueGoal={canMutateGoal && !isGoalActionDisabled}
 								isModelCatalogLoading={isModelCatalogLoading}
 								workspaceOptions={workspaceOptions}
 								chatOrganizationId={organizationId}
@@ -743,6 +758,7 @@ export const AgentChatPageLoadingView: FC<AgentChatPageLoadingViewProps> = ({
 						planModeEnabled={planModeEnabled}
 						onPlanModeToggle={onPlanModeToggle}
 						isModelCatalogLoading={isModelCatalogLoading}
+						canPursueGoal={false}
 						hasModelOptions={hasModelOptions}
 					/>
 				</div>{" "}

@@ -21,7 +21,6 @@ import { useDashboard } from "#/modules/dashboard/useDashboard";
 import { docs } from "#/utils/docs";
 import { useFileAttachments } from "../hooks/useFileAttachments";
 import { parseStoredDraft } from "../utils/draftStorage";
-import { parseGoalCommand } from "../utils/goalCommand";
 import {
 	getModelSelectorPlaceholder,
 	getProviderForModelOption,
@@ -32,7 +31,10 @@ import {
 	formatUsageLimitMessage,
 	isChatUsageLimitExceededResponse,
 } from "../utils/usageLimitMessage";
-import { AgentChatInput } from "./AgentChatInput";
+import {
+	AgentChatInput,
+	type AgentChatInputSendOptions,
+} from "./AgentChatInput";
 import { ChatAccessDeniedAlert } from "./ChatAccessDeniedAlert";
 import type { ModelSelectorOption } from "./ChatElements";
 import { CompactOrgSelector } from "./ChatElements";
@@ -361,31 +363,19 @@ export const AgentCreateForm: FC<AgentCreateFormProps> = ({
 			? selectedWorkspaceId
 			: null;
 
-	const handleSend = async (message: string, fileIDs?: string[]) => {
-		let submittedMessage = message;
-		let goalMutation: TypesGen.ChatGoalMutation | undefined;
-		const goalCommand = parseGoalCommand(message);
-		if (goalCommand) {
-			if (goalCommand.kind === "set") {
-				submittedMessage = goalCommand.objective;
-				goalMutation = goalCommand.mutation;
-			} else if (goalCommand.kind === "unsupported") {
-				toast.warning(goalCommand.reason);
-				throw new Error(goalCommand.reason);
-			} else {
-				toast.info("Start a chat before using goal lifecycle commands.");
-				throw new Error("Start a chat before using goal lifecycle commands.");
-			}
-		}
-
+	const handleSend = async (
+		message: string,
+		fileIDs?: string[],
+		options?: AgentChatInputSendOptions,
+	) => {
 		submitDraft();
 		await onCreateChat({
-			message: submittedMessage,
+			message,
 			fileIDs,
 			workspaceId: effectiveWorkspaceId ?? undefined,
 			model: submittedModel,
 			organizationId,
-			goalMutation,
+			goalMutation: options?.goalMutation,
 			mcpServerIds:
 				effectiveMCPServerIds.length > 0
 					? [...effectiveMCPServerIds]
@@ -410,7 +400,10 @@ export const AgentCreateForm: FC<AgentCreateFormProps> = ({
 		provider: getProviderForModelOption(modelOptions, selectedModel),
 	});
 
-	const handleSendWithAttachments = async (message: string) => {
+	const handleSendWithAttachments = async (
+		message: string,
+		options?: AgentChatInputSendOptions,
+	) => {
 		const fileIds: string[] = [];
 		let skippedErrors = 0;
 		for (const file of attachments) {
@@ -429,12 +422,8 @@ export const AgentCreateForm: FC<AgentCreateFormProps> = ({
 			);
 		}
 		const fileArg = fileIds.length > 0 ? fileIds : undefined;
-		try {
-			await handleSend(message, fileArg);
-			resetAttachments();
-		} catch {
-			// Attachments preserved for retry on failure.
-		}
+		await handleSend(message, fileArg, options);
+		resetAttachments();
 	};
 
 	const permittedOrgsQuery = useQuery({

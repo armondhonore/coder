@@ -20,7 +20,6 @@ import { buildOptimisticEditedMessage } from "#/api/queries/chatMessageEdits";
 import {
 	chat,
 	chatDesktopEnabled,
-	chatGoal,
 	chatKey,
 	chatMessagesForInfiniteScroll,
 	chatModelConfigs,
@@ -65,7 +64,10 @@ import {
 	AgentChatPageView,
 } from "./AgentChatPageView";
 import type { AgentsOutletContext } from "./AgentsPage";
-import type { ChatMessageInputRef } from "./components/AgentChatInput";
+import type {
+	AgentChatInputSendOptions,
+	ChatMessageInputRef,
+} from "./components/AgentChatInput";
 import { AgentSetupNotice } from "./components/AgentSetupNotice";
 import { normalizeChatErrorPayload } from "./components/ChatConversation/chatError";
 import {
@@ -90,7 +92,6 @@ import { getModelSelectorHelp } from "./components/ModelSelectorHelp";
 import { useGitWatcher } from "./hooks/useGitWatcher";
 import { getAgentChatSendShortcut } from "./utils/agentChatSendShortcut";
 import { type ParsedDraft, parseStoredDraft } from "./utils/draftStorage";
-import { parseGoalCommand } from "./utils/goalCommand";
 import {
 	countConfiguredProviderConfigs,
 	getModelOptionsFromConfigs,
@@ -385,6 +386,7 @@ export function useConversationEditingState(deps: {
 		message: string,
 		attachments?: readonly PendingAttachment[],
 		editedMessageID?: number,
+		options?: AgentChatInputSendOptions,
 	) => Promise<void>;
 	onDeleteQueuedMessage: (id: number) => Promise<void>;
 	chatInputRef: React.RefObject<ChatMessageInputRef | null>;
@@ -582,11 +584,15 @@ export function useConversationEditingState(deps: {
 	const handleSendFromInput = async (
 		message: string,
 		attachments?: readonly PendingAttachment[],
+		options?: AgentChatInputSendOptions,
 	) => {
 		const editedMessageID =
 			editingMessageId !== null ? editingMessageId : undefined;
 		const queueEditID = editingQueuedMessageID;
-		const sendPromise = onSend(message, attachments, editedMessageID);
+		const sendPromise =
+			options === undefined
+				? onSend(message, attachments, editedMessageID)
+				: onSend(message, attachments, editedMessageID, options);
 
 		// For history edits, clear input immediately and prepare
 		// a rollback in case the send fails.
@@ -945,10 +951,10 @@ const AgentChatPage: FC = () => {
 	const chatAuthorizationObject =
 		chatRecord !== undefined
 			? {
-				resource_type: "chat" as const,
-				owner_id: chatRecord.owner_id,
-				organization_id: chatRecord.organization_id,
-			}
+					resource_type: "chat" as const,
+					owner_id: chatRecord.owner_id,
+					organization_id: chatRecord.organization_id,
+				}
 			: undefined;
 	const chatAuthorizationChecks: TypesGen.AuthorizationRequest["checks"] = {};
 	if (chatAuthorizationObject !== undefined && shouldCheckCanShareChat) {
@@ -1283,49 +1289,6 @@ const AgentChatPage: FC = () => {
 				);
 			},
 		});
-	};
-
-	const handleGoalCommand = async (
-		command: NonNullable<ReturnType<typeof parseGoalCommand>>,
-	): Promise<{
-		message: string;
-		mutation?: TypesGen.ChatGoalMutation;
-	} | null> => {
-		if (!agentId) {
-			return null;
-		}
-		switch (command.kind) {
-			case "set":
-				if (!canMutateGoal) {
-					toast.warning("Goals can only be changed from the root chat.");
-					return null;
-				}
-				return { message: command.objective, mutation: command.mutation };
-			case "show": {
-				const response = await queryClient
-					.fetchQuery(chatGoal(agentId))
-					.catch((error) => {
-						toast.error("Failed to fetch goal.");
-						throw error;
-					});
-				setCachedChatGoal(queryClient, agentId, response.goal);
-				toast.info(
-					response.goal
-						? `Current goal: ${response.goal.objective}`
-						: "No current goal.",
-				);
-				return null;
-			}
-			case "lifecycle":
-				await handleGoalAction(
-					command.action,
-					command.mutation.completion_summary,
-				);
-				return null;
-			case "unsupported":
-				toast.warning(command.reason);
-				return null;
-		}
 	};
 
 	const handleUsageLimitError = (error: unknown): void => {
@@ -1691,28 +1654,16 @@ const AgentChatPage: FC = () => {
 		message: string,
 		attachments?: readonly PendingAttachment[],
 		editedMessageID?: number,
+		options?: AgentChatInputSendOptions,
 	) {
-		if (editedMessageID === undefined) {
-			const goalCommand = parseGoalCommand(message);
-			if (goalCommand) {
-				const goalSubmission = await handleGoalCommand(goalCommand);
-				if (!goalSubmission) {
-					return;
-				}
-				await submitChatTurn({
-					message: goalSubmission.message,
-					attachments,
-					goalMutation: goalSubmission.mutation,
-					useComposerContent: false,
-				});
-				return;
-			}
-		}
-
 		await submitChatTurn({
 			message,
 			attachments,
 			editedMessageID,
+			goalMutation:
+				editedMessageID === undefined && canMutateGoal && !isGoalActionDisabled
+					? options?.goalMutation
+					: undefined,
 		});
 	}
 
@@ -1786,6 +1737,8 @@ const AgentChatPage: FC = () => {
 			isArchived={isArchived}
 			isSharedChat={isSharedChat}
 			chatOwner={chatOwner}
+			canUpdateOtherUserChat={canUpdateOtherUserChat}
+			canUpdateOtherUserChatLoading={canUpdateOtherUserChatLoading}
 			canShareChat={canShareChat}
 			workspace={workspace}
 			workspaceAgent={workspaceAgent}
