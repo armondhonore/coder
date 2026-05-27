@@ -13,6 +13,7 @@ import type * as TypesGen from "#/api/typesGenerated";
 import { type AIProviderType, AIProviderTypes } from "#/api/typesGenerated";
 import type { UsePaginatedQueryOptions } from "#/hooks/usePaginatedQuery";
 import { formatProviderLabel } from "#/utils/aiProviders";
+import { currentChatGoal } from "./chatGoal";
 import {
 	projectEditedConversationIntoCache,
 	reconcileEditedMessageInCache,
@@ -868,60 +869,53 @@ type UpdateChatGoalVariables = {
 	mutation: TypesGen.ChatGoalMutation;
 };
 
-function currentChatGoal(
-	goal: TypesGen.ChatGoal | undefined,
-): TypesGen.ChatGoal | undefined {
-	if (
-		goal?.status === "active" ||
-		goal?.status === "paused" ||
-		goal?.status === "complete"
-	) {
-		return goal;
-	}
-	return undefined;
-}
-
 export const setCachedChatGoal = (
 	queryClient: QueryClient,
 	chatId: string,
 	goal: TypesGen.ChatGoal | undefined,
 ) => {
-	const findCachedChatFamilyID = (targetChatId: string): string | undefined => {
-		const detailChat = queryClient.getQueryData<TypesGen.Chat>(
-			chatKey(targetChatId),
-		);
-		if (detailChat) {
-			return chatRootId(detailChat);
+	const cachedChatFamilyIDs = new Map<string, string>();
+	const rememberChatFamily = (chat: TypesGen.Chat) => {
+		cachedChatFamilyIDs.set(chat.id, chatRootId(chat));
+		for (const child of chat.children ?? []) {
+			cachedChatFamilyIDs.set(child.id, chatRootId(child));
 		}
-
-		const listQueries = queryClient.getQueriesData<
-			TypesGen.Chat[] | { pages: TypesGen.Chat[][]; pageParams: unknown[] }
-		>({ queryKey: chatsKey, predicate: isChatListQuery });
-		for (const [, data] of listQueries) {
-			if (!data) {
-				continue;
-			}
-			const pages = Array.isArray(data) ? [data] : data.pages;
-			for (const page of pages) {
-				for (const chat of page) {
-					if (chat.id === targetChatId) {
-						return chatRootId(chat);
-					}
-					const child = chat.children?.find(
-						(child) => child.id === targetChatId,
-					);
-					if (child) {
-						return chatRootId(child);
-					}
-				}
-			}
-		}
-		return undefined;
 	};
+
+	const detailQueries = queryClient.getQueriesData<TypesGen.Chat>({
+		queryKey: chatsKey,
+		predicate: isChatDetailQuery,
+	});
+	for (const [, chat] of detailQueries) {
+		if (chat) {
+			rememberChatFamily(chat);
+		}
+	}
+
+	const listQueries = queryClient.getQueriesData<
+		TypesGen.Chat[] | { pages: TypesGen.Chat[][]; pageParams: unknown[] }
+	>({ queryKey: chatsKey, predicate: isChatListQuery });
+	for (const [, data] of listQueries) {
+		if (!data) {
+			continue;
+		}
+		const pages = Array.isArray(data) ? [data] : data.pages;
+		for (const page of pages) {
+			for (const chat of page) {
+				rememberChatFamily(chat);
+			}
+		}
+	}
 
 	const cachedGoal = currentChatGoal(goal);
 	const familyId =
-		goal?.root_chat_id ?? findCachedChatFamilyID(chatId) ?? chatId;
+		goal?.root_chat_id ?? cachedChatFamilyIDs.get(chatId) ?? chatId;
+	const cachedFamilyChatIDs = new Set<string>([chatId, familyId]);
+	for (const [cachedChatID, cachedFamilyID] of cachedChatFamilyIDs) {
+		if (cachedFamilyID === familyId) {
+			cachedFamilyChatIDs.add(cachedChatID);
+		}
+	}
 	const isFamilyChat = (chat: TypesGen.Chat) => chatRootId(chat) === familyId;
 	const applyGoal = (chat: TypesGen.Chat) =>
 		chat.goal === cachedGoal ? chat : { ...chat, goal: cachedGoal };
@@ -972,9 +966,7 @@ export const setCachedChatGoal = (
 					return false;
 				}
 				return (
-					keyChatId === familyId ||
-					(typeof keyChatId === "string" &&
-						findCachedChatFamilyID(keyChatId) === familyId)
+					typeof keyChatId === "string" && cachedFamilyChatIDs.has(keyChatId)
 				);
 			},
 		},

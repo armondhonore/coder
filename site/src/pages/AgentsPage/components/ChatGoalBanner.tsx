@@ -2,19 +2,20 @@ import {
 	CheckIcon,
 	CirclePauseIcon,
 	CirclePlayIcon,
+	type LucideIcon,
 	TargetIcon,
 	Trash2Icon,
 } from "lucide-react";
 import type { ComponentProps, FC } from "react";
+import {
+	type ChatGoalAction,
+	type CurrentChatGoalStatus,
+	chatGoalActionsForStatus,
+	isCurrentChatGoalStatus,
+} from "#/api/queries/chatGoal";
 import type * as TypesGen from "#/api/typesGenerated";
 import { Badge } from "#/components/Badge/Badge";
 import { Button } from "#/components/Button/Button";
-
-export type ChatGoalAction = Exclude<TypesGen.ChatGoalMutationAction, "set">;
-type CurrentChatGoalStatus = Extract<
-	TypesGen.ChatGoalStatus,
-	"active" | "paused" | "complete"
->;
 
 type ChatGoalBannerProps = {
 	goal: TypesGen.ChatGoal | undefined;
@@ -24,71 +25,28 @@ type ChatGoalBannerProps = {
 	onAction: (action: ChatGoalAction) => Promise<void> | void;
 };
 
-const isCurrentGoalStatus = (
-	status: TypesGen.ChatGoalStatus,
-): status is CurrentChatGoalStatus =>
-	status === "active" || status === "paused" || status === "complete";
-
-const statusLabel = (status: CurrentChatGoalStatus): string => {
-	switch (status) {
-		case "active":
-			return "Active";
-		case "paused":
-			return "Paused";
-		case "complete":
-			return "Complete";
-	}
+type GoalStatusUI = {
+	label: string;
+	variant: ComponentProps<typeof Badge>["variant"];
 };
 
-const statusVariant = (
-	status: CurrentChatGoalStatus,
-): ComponentProps<typeof Badge>["variant"] => {
-	switch (status) {
-		case "active":
-			return "info";
-		case "paused":
-			return "warning";
-		case "complete":
-			return "green";
-	}
+const GOAL_STATUS_UI = {
+	active: { label: "Active", variant: "info" },
+	paused: { label: "Paused", variant: "warning" },
+	complete: { label: "Complete", variant: "green" },
+} satisfies Record<CurrentChatGoalStatus, GoalStatusUI>;
+
+type GoalActionUI = {
+	label: string;
+	Icon: LucideIcon;
 };
 
-const actionsForStatus = (status: CurrentChatGoalStatus): ChatGoalAction[] => {
-	switch (status) {
-		case "active":
-			return ["pause", "complete", "clear"];
-		case "paused":
-			return ["resume", "clear"];
-		case "complete":
-			return ["clear"];
-	}
-};
-
-const actionLabel = (action: ChatGoalAction): string => {
-	switch (action) {
-		case "pause":
-			return "Pause";
-		case "resume":
-			return "Resume";
-		case "complete":
-			return "Complete";
-		case "clear":
-			return "Clear";
-	}
-};
-
-const ActionIcon = ({ action }: { action: ChatGoalAction }) => {
-	switch (action) {
-		case "pause":
-			return <CirclePauseIcon />;
-		case "resume":
-			return <CirclePlayIcon />;
-		case "complete":
-			return <CheckIcon />;
-		case "clear":
-			return <Trash2Icon />;
-	}
-};
+const GOAL_ACTION_UI = {
+	pause: { label: "Pause", Icon: CirclePauseIcon },
+	resume: { label: "Resume", Icon: CirclePlayIcon },
+	complete: { label: "Complete", Icon: CheckIcon },
+	clear: { label: "Clear", Icon: Trash2Icon },
+} satisfies Record<ChatGoalAction, GoalActionUI>;
 
 export const ChatGoalBanner: FC<ChatGoalBannerProps> = ({
 	goal,
@@ -97,11 +55,12 @@ export const ChatGoalBanner: FC<ChatGoalBannerProps> = ({
 	isActionDisabled = false,
 	onAction,
 }) => {
-	if (!goal || !isCurrentGoalStatus(goal.status)) {
+	if (!goal || !isCurrentChatGoalStatus(goal.status)) {
 		return null;
 	}
 
-	const actions = canMutateGoal ? actionsForStatus(goal.status) : [];
+	const statusUI = GOAL_STATUS_UI[goal.status];
+	const actions = canMutateGoal ? chatGoalActionsForStatus(goal.status) : [];
 	const disabled = isActionPending || isActionDisabled;
 
 	return (
@@ -114,8 +73,8 @@ export const ChatGoalBanner: FC<ChatGoalBannerProps> = ({
 				<div className="min-w-0 space-y-1">
 					<div className="flex flex-wrap items-center gap-2">
 						<span className="font-medium text-content-primary">Goal</span>
-						<Badge size="sm" variant={statusVariant(goal.status)}>
-							{statusLabel(goal.status)}
+						<Badge size="sm" variant={statusUI.variant}>
+							{statusUI.label}
 						</Badge>
 					</div>
 					<p className="whitespace-pre-wrap break-words text-content-secondary">
@@ -130,22 +89,26 @@ export const ChatGoalBanner: FC<ChatGoalBannerProps> = ({
 			</div>
 			{actions.length > 0 ? (
 				<div className="flex flex-wrap gap-1 sm:justify-end">
-					{actions.map((action) => (
-						<Button
-							key={action}
-							size="xs"
-							variant={action === "clear" ? "subtle" : "outline"}
-							disabled={disabled}
-							onClick={() => {
-								void (async () => {
-									await onAction(action);
-								})().catch(() => undefined);
-							}}
-						>
-							<ActionIcon action={action} />
-							{actionLabel(action)}
-						</Button>
-					))}
+					{actions.map((action) => {
+						const actionUI = GOAL_ACTION_UI[action];
+						const Icon = actionUI.Icon;
+						return (
+							<Button
+								key={action}
+								size="xs"
+								variant={action === "clear" ? "subtle" : "outline"}
+								disabled={disabled}
+								onClick={() => {
+									void (async () => {
+										await onAction(action);
+									})().catch(() => undefined);
+								}}
+							>
+								<Icon />
+								{actionUI.label}
+							</Button>
+						);
+					})}
 				</div>
 			) : null}
 		</section>

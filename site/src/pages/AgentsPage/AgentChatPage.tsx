@@ -16,6 +16,10 @@ import {
 } from "#/api/api";
 import { getErrorMessage, isApiError } from "#/api/errors";
 import { checkAuthorization } from "#/api/queries/authCheck";
+import {
+	type ChatGoalAction,
+	chatGoalActionAllowed,
+} from "#/api/queries/chatGoal";
 import { buildOptimisticEditedMessage } from "#/api/queries/chatMessageEdits";
 import {
 	chat,
@@ -219,28 +223,11 @@ export const runPromoteQueuedMessage = async (params: {
 	}
 };
 
-const goalActionAllowed = (
-	goal: TypesGen.ChatGoal,
-	action: Exclude<TypesGen.ChatGoalMutationAction, "set">,
-): boolean => {
-	switch (goal.status) {
-		case "active":
-			return action === "pause" || action === "complete" || action === "clear";
-		case "paused":
-			return action === "resume" || action === "clear";
-		case "complete":
-			return action === "clear";
-		case "cleared":
-		case "replaced":
-			return false;
-	}
-};
-
 /** @internal Exported for testing. */
 export const runGoalAction = async (params: {
 	agentId: string | undefined;
 	goal: TypesGen.ChatGoal | undefined;
-	action: Exclude<TypesGen.ChatGoalMutationAction, "set">;
+	action: ChatGoalAction;
 	completionSummary?: string;
 	updateGoal: (variables: {
 		chatId: string;
@@ -263,7 +250,7 @@ export const runGoalAction = async (params: {
 	if (!agentId) {
 		return;
 	}
-	if (!goal?.id || !goalActionAllowed(goal, action)) {
+	if (!goal?.id || !chatGoalActionAllowed(goal, action)) {
 		onMissingGoal?.();
 		return;
 	}
@@ -620,7 +607,7 @@ export function useConversationEditingState(deps: {
 		serializedEditorStateRef.current = serializedEditorState;
 
 		// Don't overwrite the persisted draft while editing a
-		// history or queued message — the original draft (possibly
+		// history or queued message, the original draft (possibly
 		// containing file-reference chips) is saved in React state
 		// and should survive a cancel.
 		if (editingMessageId !== null || editingQueuedMessageID !== null) {
@@ -633,7 +620,7 @@ export function useConversationEditingState(deps: {
 				try {
 					localStorage.setItem(draftStorageKey, serializedEditorState);
 				} catch {
-					// QuotaExceededError — silently discard the draft.
+					// QuotaExceededError, silently discard the draft.
 				}
 			} else {
 				localStorage.removeItem(draftStorageKey);
@@ -1812,7 +1799,7 @@ const AgentChatPage: FC = () => {
 
 // Keyed wrapper so that navigating between agents (changing the
 // :agentId param) fully remounts the component, resetting all
-// internal state — drafts, editing, queries — cleanly.
+// internal state, drafts, editing, and queries, cleanly.
 const KeyedAgentChatPage: FC = () => {
 	const { agentId } = useParams<{ agentId: string }>();
 	return <AgentChatPage key={agentId} />;

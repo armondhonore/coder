@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useQueryClient } from "react-query";
 import type { UrlTransform } from "streamdown";
+import { type ChatGoalAction, currentChatGoal } from "#/api/queries/chatGoal";
 import { chatDiffContentsKey } from "#/api/queries/chats";
 import type * as TypesGen from "#/api/typesGenerated";
 import type {
@@ -30,10 +31,7 @@ import {
 import type { useChatStore } from "./components/ChatConversation/chatStore";
 import type { ModelSelectorOption } from "./components/ChatElements";
 import { DesktopPanelContext } from "./components/ChatElements/tools/DesktopPanelContext";
-import {
-	type ChatGoalAction,
-	ChatGoalBanner,
-} from "./components/ChatGoalBanner";
+import { ChatGoalBanner } from "./components/ChatGoalBanner";
 import type { PendingAttachment } from "./components/ChatPageContent";
 import { ChatPageInput, ChatPageTimeline } from "./components/ChatPageContent";
 import { ChatScrollContainer } from "./components/ChatScrollContainer";
@@ -451,14 +449,17 @@ export const AgentChatPageView: FC<AgentChatPageViewProps> = ({
 	const chatOwnerLabel =
 		chatOwner?.name?.trim() ||
 		(chatOwnerUsername ? `@${chatOwnerUsername}` : "another user");
+	const isOtherUserReadOnly =
+		!isArchived &&
+		chatOwner !== undefined &&
+		(canUpdateOtherUserChatLoading || !canUpdateOtherUserChat);
 	const chatOwnerWarning =
 		!isArchived && chatOwner !== undefined && !canUpdateOtherUserChatLoading
 			? canUpdateOtherUserChat
 				? `This is not your chat. Prompting here will use ${chatOwnerLabel}'s identity.`
 				: `This chat is owned by ${chatOwnerLabel}. You have read-only access.`
 			: undefined;
-	const topGoal =
-		goal?.status === "active" || goal?.status === "paused" ? goal : undefined;
+	const topGoal = currentChatGoal(goal);
 
 	const titleElement = (
 		<title>
