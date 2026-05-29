@@ -34,6 +34,9 @@ export const Active: Story = {
 		const canvas = within(canvasElement);
 		expect(canvas.getByLabelText("Current goal")).toBeVisible();
 		expect(canvas.getByText("Active")).toBeVisible();
+		expect(
+			canvas.getByText("Ship the frontend goal command UX with tests."),
+		).toBeVisible();
 
 		await userEvent.click(canvas.getByRole("button", { name: /Pause/i }));
 		await userEvent.click(canvas.getByRole("button", { name: /Complete/i }));

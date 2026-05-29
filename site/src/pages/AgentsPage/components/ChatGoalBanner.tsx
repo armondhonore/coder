@@ -78,7 +78,7 @@ export const ChatGoalBanner: FC<ChatGoalBannerProps> = ({
 						</Badge>
 					</div>
 					<p className="whitespace-pre-wrap break-words text-content-secondary">
-						{goal.objective.trim() || "No objective provided."}
+						{goal.objective}
 					</p>
 					{goal.completion_summary ? (
 						<p className="whitespace-pre-wrap break-words text-xs text-content-secondary">
