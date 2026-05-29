@@ -32,8 +32,8 @@ type GoalToolOptions struct {
 type getGoalArgs struct{}
 
 type completeGoalArgs struct {
-	GoalID  uuid.UUID `json:"goal_id" description:"The expected current goal ID. The tool fails if the current goal changed."`
-	Summary string    `json:"summary" description:"A concise non-empty summary of how the goal was completed."`
+	GoalID  string `json:"goal_id" description:"The expected current goal ID. The tool fails if the current goal changed."`
+	Summary string `json:"summary" description:"A concise non-empty summary of how the goal was completed."`
 }
 
 type goalResult struct {
@@ -74,8 +74,15 @@ func CompleteGoal(db database.Store, options GoalToolOptions) fantasy.AgentTool 
 			if !options.IsRootChat {
 				return fantasy.NewTextErrorResponse("complete_goal can only be used from the root chat"), nil
 			}
-			if args.GoalID == uuid.Nil {
+			goalIDStr := strings.TrimSpace(args.GoalID)
+			if goalIDStr == "" {
 				return fantasy.NewTextErrorResponse("goal_id is required"), nil
+			}
+			goalID, err := uuid.Parse(goalIDStr)
+			if err != nil {
+				return fantasy.NewTextErrorResponse(
+					xerrors.Errorf("invalid goal_id: %w", err).Error(),
+				), nil
 			}
 			summary := strings.TrimSpace(args.Summary)
 			if summary == "" {
@@ -98,7 +105,7 @@ func CompleteGoal(db database.Store, options GoalToolOptions) fantasy.AgentTool 
 					}
 					return err
 				}
-				if current.ID != args.GoalID {
+				if current.ID != goalID {
 					return sql.ErrNoRows
 				}
 				if current.Status != database.ChatGoalStatusActive {
@@ -109,7 +116,7 @@ func CompleteGoal(db database.Store, options GoalToolOptions) fantasy.AgentTool 
 				}
 				completed, err = tx.CompleteChatGoalByID(ctx, database.CompleteChatGoalByIDParams{
 					RootChatID: options.RootChatID,
-					ID:         args.GoalID,
+					ID:         goalID,
 					CompletionSummary: sql.NullString{
 						String: summary,
 						Valid:  true,

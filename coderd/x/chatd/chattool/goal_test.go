@@ -81,6 +81,17 @@ func TestGoalTools(t *testing.T) {
 	require.Equal(t, database.ChatGoalStatusComplete, completedGoal.Status)
 }
 
+func TestCompleteGoalSchemaUsesStringGoalID(t *testing.T) {
+	t.Parallel()
+
+	tool := chattool.CompleteGoal(nil, chattool.GoalToolOptions{})
+	info := tool.Info()
+	goalIDParam, ok := info.Parameters["goal_id"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "string", goalIDParam["type"])
+	require.NotEqual(t, "array", goalIDParam["type"])
+}
+
 func TestGetGoalReturnsNullWithoutCurrentGoal(t *testing.T) {
 	t.Parallel()
 
@@ -133,6 +144,16 @@ func TestCompleteGoalValidatesInput(t *testing.T) {
 			name:    "missing goal id",
 			input:   `{"summary":"done"}`,
 			message: "goal_id is required",
+		},
+		{
+			name:    "empty goal id",
+			input:   `{"goal_id":"   ","summary":"done"}`,
+			message: "goal_id is required",
+		},
+		{
+			name:    "invalid goal id",
+			input:   `{"goal_id":"not-a-uuid","summary":"done"}`,
+			message: "invalid goal_id",
 		},
 		{
 			name:    "empty summary",
