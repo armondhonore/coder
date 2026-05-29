@@ -89,7 +89,6 @@ func TestCompleteGoalSchemaUsesStringGoalID(t *testing.T) {
 	goalIDParam, ok := info.Parameters["goal_id"].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "string", goalIDParam["type"])
-	require.NotEqual(t, "array", goalIDParam["type"])
 }
 
 func TestGetGoalReturnsNullWithoutCurrentGoal(t *testing.T) {

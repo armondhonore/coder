@@ -80,9 +80,7 @@ func CompleteGoal(db database.Store, options GoalToolOptions) fantasy.AgentTool 
 			}
 			goalID, err := uuid.Parse(goalIDStr)
 			if err != nil {
-				return fantasy.NewTextErrorResponse(
-					xerrors.Errorf("invalid goal_id: %w", err).Error(),
-				), nil
+				return fantasy.NewTextErrorResponse("invalid goal_id"), nil
 			}
 			summary := strings.TrimSpace(args.Summary)
 			if summary == "" {
