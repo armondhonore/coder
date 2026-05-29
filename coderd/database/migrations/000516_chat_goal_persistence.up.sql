@@ -8,6 +8,7 @@ CREATE TYPE chat_goal_status AS ENUM (
 
 CREATE TABLE chat_goals (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    goal_order BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
     root_chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
     created_from_chat_id UUID REFERENCES chats(id) ON DELETE SET NULL,
     created_from_message_id BIGINT REFERENCES chat_messages(id) ON DELETE SET NULL,
@@ -36,7 +37,7 @@ CREATE UNIQUE INDEX idx_chat_goals_current
     WHERE status IN ('active', 'paused');
 
 CREATE INDEX idx_chat_goals_root_created
-    ON chat_goals(root_chat_id, created_at DESC, id DESC);
+    ON chat_goals(root_chat_id, created_at DESC, goal_order DESC);
 
 CREATE INDEX idx_chat_goals_created_from_message_id
     ON chat_goals(created_from_message_id)

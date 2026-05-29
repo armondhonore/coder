@@ -1679,6 +1679,7 @@ CREATE TABLE chat_files (
 
 CREATE TABLE chat_goals (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
+    goal_order bigint NOT NULL,
     root_chat_id uuid NOT NULL,
     created_from_chat_id uuid,
     created_from_message_id bigint,
@@ -1700,6 +1701,15 @@ CREATE TABLE chat_goals (
     CONSTRAINT chat_goals_completion_summary_status_check CHECK (((completion_summary IS NULL) OR (status = 'complete'::chat_goal_status))),
     CONSTRAINT chat_goals_objective_not_empty CHECK ((length(btrim(objective)) > 0)),
     CONSTRAINT chat_goals_replaced_at_status_check CHECK (((status = 'replaced'::chat_goal_status) = (replaced_at IS NOT NULL)))
+);
+
+ALTER TABLE chat_goals ALTER COLUMN goal_order ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME chat_goals_goal_order_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
 );
 
 CREATE TABLE chat_messages (
@@ -4317,7 +4327,7 @@ CREATE INDEX idx_chat_goals_created_from_message_id ON chat_goals USING btree (c
 
 CREATE UNIQUE INDEX idx_chat_goals_current ON chat_goals USING btree (root_chat_id) WHERE (status = ANY (ARRAY['active'::chat_goal_status, 'paused'::chat_goal_status]));
 
-CREATE INDEX idx_chat_goals_root_created ON chat_goals USING btree (root_chat_id, created_at DESC, id DESC);
+CREATE INDEX idx_chat_goals_root_created ON chat_goals USING btree (root_chat_id, created_at DESC, goal_order DESC);
 
 CREATE INDEX idx_chat_messages_chat ON chat_messages USING btree (chat_id);
 

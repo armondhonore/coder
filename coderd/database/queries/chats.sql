@@ -1817,7 +1817,7 @@ WHERE
             root_chat_id = @root_chat_id::uuid
         ORDER BY
             created_at DESC,
-            id DESC
+            goal_order DESC
         LIMIT 1
     )
     AND status IN ('active', 'paused', 'complete');
@@ -1833,7 +1833,7 @@ WITH latest_goal_ids AS (
     ORDER BY
         root_chat_id,
         created_at DESC,
-        id DESC
+        goal_order DESC
 )
 SELECT
     chat_goals.*
