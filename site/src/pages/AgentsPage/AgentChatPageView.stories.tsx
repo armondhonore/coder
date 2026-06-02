@@ -189,8 +189,6 @@ const StoryAgentChatPageView: FC<StoryProps> = ({ editing, ...overrides }) => {
 		>["selectedMCPServerIds"],
 		onMCPSelectionChange: fn(),
 		onMCPAuthComplete: fn(),
-		canUpdateOtherUserChat: false,
-		canUpdateOtherUserChatLoading: false,
 		canShareChat: false,
 		...overrides,
 		store,

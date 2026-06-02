@@ -1722,8 +1722,6 @@ const AgentChatPage: FC = () => {
 			isArchived={isArchived}
 			isSharedChat={isSharedChat}
 			chatOwner={chatOwner}
-			canUpdateOtherUserChat={canUpdateOtherUserChat}
-			canUpdateOtherUserChatLoading={canUpdateOtherUserChatLoading}
 			canShareChat={canShareChat}
 			workspace={workspace}
 			workspaceAgent={workspaceAgent}
