@@ -3,17 +3,19 @@ import { expect, fn, userEvent, within } from "storybook/test";
 import type * as TypesGen from "#/api/typesGenerated";
 import { ChatGoalBanner } from "./ChatGoalBanner";
 
+const storyNow = new Date().toISOString();
+
 const goal = (
 	overrides: Partial<TypesGen.ChatGoal> = {},
 ): TypesGen.ChatGoal => ({
 	id: "goal-1",
 	root_chat_id: "chat-1",
-	objective: "Ship the frontend goal command UX with tests.",
+	objective: "Ship the frontend goal mode UX with tests.",
 	status: "active",
 	created_by_user_id: "user-1",
 	completed_by_agent: false,
-	created_at: "2026-05-22T00:00:00Z",
-	updated_at: "2026-05-22T00:00:00Z",
+	created_at: storyNow,
+	updated_at: storyNow,
 	...overrides,
 });
 
@@ -33,9 +35,9 @@ export const Active: Story = {
 	play: async ({ canvasElement, args }) => {
 		const canvas = within(canvasElement);
 		expect(canvas.getByLabelText("Current goal")).toBeVisible();
-		expect(canvas.getByText("Active")).toBeVisible();
+		expect(canvas.getByText("Pursuing goal")).toBeVisible();
 		expect(
-			canvas.getByText("Ship the frontend goal command UX with tests."),
+			canvas.getByText("Ship the frontend goal mode UX with tests."),
 		).toBeVisible();
 
 		await userEvent.click(canvas.getByRole("button", { name: /Pause/i }));
@@ -55,7 +57,7 @@ export const Paused: Story = {
 	},
 	play: async ({ canvasElement, args }) => {
 		const canvas = within(canvasElement);
-		expect(canvas.getByText("Paused")).toBeVisible();
+		expect(canvas.getByText("Goal paused")).toBeVisible();
 
 		await userEvent.click(canvas.getByRole("button", { name: /Resume/i }));
 		await userEvent.click(canvas.getByRole("button", { name: /Clear/i }));
@@ -75,7 +77,7 @@ export const Complete: Story = {
 	},
 	play: async ({ canvasElement, args }) => {
 		const canvas = within(canvasElement);
-		expect(canvas.getByText("Complete")).toBeVisible();
+		expect(canvas.getByText("Goal complete")).toBeVisible();
 		expect(canvas.getByText("Summary: Verified and shipped.")).toBeVisible();
 
 		await userEvent.click(canvas.getByRole("button", { name: /Clear/i }));
@@ -93,7 +95,7 @@ export const ReadOnlyChildGoal: Story = {
 	play: async ({ canvasElement, args }) => {
 		const canvas = within(canvasElement);
 		expect(canvas.getByLabelText("Current goal")).toBeVisible();
-		expect(canvas.getByText("Active")).toBeVisible();
+		expect(canvas.getByText("Pursuing goal")).toBeVisible();
 		expect(canvas.queryByRole("button", { name: /Pause/i })).toBeNull();
 		expect(args.onAction).not.toHaveBeenCalled();
 	},
