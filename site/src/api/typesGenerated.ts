@@ -4403,6 +4403,7 @@ export const EntitlementsWarningHeader = "X-Coder-Entitlements-Warning";
 // From codersdk/deployment.go
 export type Experiment =
 	| "auto-fill-parameters"
+	| "embedded-docs"
 	| "example"
 	| "mcp-server-http"
 	| "minimum-implicit-member"
@@ -4414,6 +4415,7 @@ export type Experiment =
 
 export const Experiments: Experiment[] = [
 	"auto-fill-parameters",
+	"embedded-docs",
 	"example",
 	"mcp-server-http",
 	"minimum-implicit-member",
