@@ -19257,10 +19257,12 @@ const docTemplate = `{
                 "mcp-server-http",
                 "workspace-build-updates",
                 "nats_pubsub",
-                "minimum-implicit-member"
+                "minimum-implicit-member",
+                "embedded-docs"
             ],
             "x-enum-comments": {
                 "ExperimentAutoFillParameters": "This should not be taken out of experiments until we have redesigned the feature.",
+                "ExperimentEmbeddedDocs": "Serves version-matched documentation inside the dashboard.",
                 "ExperimentExample": "This isn't used for anything.",
                 "ExperimentMCPServerHTTP": "Enables the MCP HTTP server functionality.",
                 "ExperimentMinimumImplicitMember": "Allows organizations to deviate from the default organization-member roles, in support of Gateway Accounts.",
@@ -19279,7 +19281,8 @@ const docTemplate = `{
                 "Enables the MCP HTTP server functionality.",
                 "Enables publishing workspace build updates to the all builds pubsub channel.",
                 "Enables embedded NATS pubsub.",
-                "Allows organizations to deviate from the default organization-member roles, in support of Gateway Accounts."
+                "Allows organizations to deviate from the default organization-member roles, in support of Gateway Accounts.",
+                "Serves version-matched documentation inside the dashboard."
             ],
             "x-enum-varnames": [
                 "ExperimentExample",
@@ -19290,7 +19293,8 @@ const docTemplate = `{
                 "ExperimentMCPServerHTTP",
                 "ExperimentWorkspaceBuildUpdates",
                 "ExperimentNATSPubsub",
-                "ExperimentMinimumImplicitMember"
+                "ExperimentMinimumImplicitMember",
+                "ExperimentEmbeddedDocs"
             ]
         },
         "codersdk.ExternalAPIKeyScopes": {
