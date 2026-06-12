@@ -104,6 +104,58 @@ func Test_rotateKeys(t *testing.T) {
 		require.Equal(t, newKey, keys[0])
 	})
 
+	t.Run("RotatesNATSCA", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			db, _       = dbtestutil.NewDB(t)
+			clock       = quartz.NewMock(t)
+			keyDuration = time.Hour * 24 * 7
+			logger      = testutil.Logger(t)
+			ctx         = testutil.Context(t, testutil.WaitShort)
+		)
+
+		kr := &rotator{
+			db:          db,
+			keyDuration: keyDuration,
+			clock:       clock,
+			logger:      logger,
+			features: []database.CryptoKeyFeature{
+				database.CryptoKeyFeatureNatsCa,
+			},
+		}
+
+		now := dbnow(clock)
+
+		oldKey := dbgen.CryptoKey(t, db, database.CryptoKey{
+			Feature:  database.CryptoKeyFeatureNatsCa,
+			StartsAt: now,
+			Sequence: 4,
+		})
+
+		// Advance the window to just inside rotation time.
+		_ = clock.Advance(keyDuration - time.Minute*59)
+		err := kr.rotateKeys(ctx)
+		require.NoError(t, err)
+
+		// The old CA must remain a valid trust root for the maximum leaf
+		// lifetime after rotation.
+		expectedDeletesAt := oldKey.ExpiresAt(keyDuration).Add(NATSCATokenDuration + time.Hour)
+		oldKey, err = db.GetCryptoKeyByFeatureAndSequence(ctx, database.GetCryptoKeyByFeatureAndSequenceParams{
+			Feature:  oldKey.Feature,
+			Sequence: oldKey.Sequence,
+		})
+		require.NoError(t, err)
+		require.Equal(t, expectedDeletesAt, oldKey.DeletesAt.Time.UTC())
+
+		newKey, err := db.GetCryptoKeyByFeatureAndSequence(ctx, database.GetCryptoKeyByFeatureAndSequenceParams{
+			Feature:  database.CryptoKeyFeatureNatsCa,
+			Sequence: oldKey.Sequence + 1,
+		})
+		require.NoError(t, err)
+		requireKey(t, newKey, database.CryptoKeyFeatureNatsCa, oldKey.ExpiresAt(keyDuration), nullTime, oldKey.Sequence+1)
+	})
+
 	t.Run("DoesNotRotateValidKeys", func(t *testing.T) {
 		t.Parallel()
 
@@ -407,7 +459,7 @@ func Test_rotateKeys(t *testing.T) {
 
 		keys, err := db.GetCryptoKeys(ctx)
 		require.NoError(t, err)
-		require.Len(t, keys, 5)
+		require.Len(t, keys, 6)
 
 		kbf, err := keysByFeature(keys, database.AllCryptoKeyFeatureValues())
 		require.NoError(t, err)
@@ -420,6 +472,7 @@ func Test_rotateKeys(t *testing.T) {
 		// caused a key to be inserted.
 		require.Len(t, kbf[database.CryptoKeyFeatureTailnetResume], 1)
 		require.Len(t, kbf[database.CryptoKeyFeatureWorkspaceAppsToken], 1)
+		require.Len(t, kbf[database.CryptoKeyFeatureNatsCa], 1)
 
 		oidcKey := kbf[database.CryptoKeyFeatureOIDCConvert][0]
 		tailnetKey := kbf[database.CryptoKeyFeatureTailnetResume][0]
@@ -585,6 +638,14 @@ func requireKey(t *testing.T, key database.CryptoKey, feature database.CryptoKey
 	require.Equal(t, deletesAt.Valid, key.DeletesAt.Valid)
 	require.Equal(t, deletesAt.Time.UTC(), key.DeletesAt.Time.UTC())
 	require.Equal(t, sequence, key.Sequence)
+
+	// The NATS CA secret is a PEM bundle rather than hex-encoded bytes.
+	if key.Feature == database.CryptoKeyFeatureNatsCa {
+		cert, _, err := parseCASecret(key.Secret.String)
+		require.NoError(t, err)
+		require.True(t, cert.IsCA)
+		return
+	}
 
 	secret, err := hex.DecodeString(key.Secret.String)
 	require.NoError(t, err)

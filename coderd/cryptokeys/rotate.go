@@ -20,6 +20,11 @@ const (
 	WorkspaceAppsTokenDuration = time.Minute
 	OIDCConvertTokenDuration   = time.Minute * 5
 	TailnetResumeTokenDuration = time.Hour * 24
+	// NATSCATokenDuration is the maximum lifetime of a leaf certificate
+	// minted under the NATS cluster CA. Old CA rows must remain valid trust
+	// roots for this long after rotation so that replicas holding leaves
+	// signed by the old CA can still be verified.
+	NATSCATokenDuration = time.Hour * 24 * 30
 
 	// defaultRotationInterval is the default interval at which keys are checked for rotation.
 	defaultRotationInterval = time.Minute * 10
@@ -170,7 +175,7 @@ func (k *rotator) rotateKeys(ctx context.Context) error {
 }
 
 func (k *rotator) insertNewKey(ctx context.Context, tx database.Store, feature database.CryptoKeyFeature, startsAt time.Time) (database.CryptoKey, error) {
-	secret, err := generateNewSecret(feature)
+	secret, err := generateNewSecret(feature, startsAt)
 	if err != nil {
 		return database.CryptoKey{}, xerrors.Errorf("generate new secret: %w", err)
 	}
@@ -227,7 +232,7 @@ func (k *rotator) rotateKey(ctx context.Context, tx database.Store, key database
 	return []database.CryptoKey{updatedKey, newKey}, nil
 }
 
-func generateNewSecret(feature database.CryptoKeyFeature) (string, error) {
+func generateNewSecret(feature database.CryptoKeyFeature, startsAt time.Time) (string, error) {
 	switch feature {
 	case database.CryptoKeyFeatureWorkspaceAppsAPIKey:
 		return generateKey(32)
@@ -237,6 +242,8 @@ func generateNewSecret(feature database.CryptoKeyFeature) (string, error) {
 		return generateKey(64)
 	case database.CryptoKeyFeatureTailnetResume:
 		return generateKey(64)
+	case database.CryptoKeyFeatureNatsCa:
+		return generateCASecret(startsAt)
 	}
 	return "", xerrors.Errorf("unknown feature: %s", feature)
 }
@@ -260,6 +267,8 @@ func tokenDuration(feature database.CryptoKeyFeature) time.Duration {
 		return OIDCConvertTokenDuration
 	case database.CryptoKeyFeatureTailnetResume:
 		return TailnetResumeTokenDuration
+	case database.CryptoKeyFeatureNatsCa:
+		return NATSCATokenDuration
 	default:
 		return 0
 	}
