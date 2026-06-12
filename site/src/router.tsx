@@ -412,6 +412,7 @@ import {
 } from "./pages/AgentsPage/components/AgentsSkeletons";
 
 const CoderCupPage = lazy(() => import("./pages/CoderCupPage/CoderCupPage"));
+const DocsPage = lazy(() => import("./pages/DocsPage/DocsPage"));
 const TasksPage = lazy(() => import("./pages/TasksPage/TasksPage"));
 const TaskPage = lazy(() => import("./pages/TaskPage/TaskPage"));
 const AIBridgeLayout = lazy(
@@ -566,6 +567,8 @@ export const router = createBrowserRouter(
 					<Route path="/connectionlog" element={<ConnectionLogPage />} />
 
 					<Route path="/tasks" element={<TasksPage />} />
+
+					<Route path="/docs/*" element={<DocsPage />} />
 
 					<Route path="/organizations" element={<OrganizationSettingsLayout />}>
 						<Route path="new" element={<CreateOrganizationPage />} />
