@@ -11,3 +11,13 @@ ORDER BY created_at ASC;
 -- name: DeleteAIGatewayKey :one
 DELETE FROM ai_gateway_keys WHERE id = $1
 RETURNING id, name, secret_prefix, created_at, last_used_at;
+
+-- name: GetAIGatewayKeyByHashedSecret :one
+SELECT *
+FROM ai_gateway_keys
+WHERE hashed_secret = $1;
+
+-- name: UpdateAIGatewayKeyLastUsedAt :exec
+UPDATE ai_gateway_keys
+SET last_used_at = @last_used_at
+WHERE id = @id;

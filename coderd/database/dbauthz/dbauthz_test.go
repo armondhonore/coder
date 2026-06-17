@@ -6920,6 +6920,17 @@ func (s *MethodTestSuite) TestAIBridge() {
 		dbm.EXPECT().DeleteAIGatewayKey(gomock.Any(), id).Return(database.DeleteAIGatewayKeyRow{}, nil).AnyTimes()
 		check.Args(id).Asserts(rbac.ResourceAIGatewayKey, policy.ActionDelete).Returns(database.DeleteAIGatewayKeyRow{})
 	}))
+	s.Run("GetAIGatewayKeyByHashedSecret", s.Mocked(func(dbm *dbmock.MockStore, _ *gofakeit.Faker, check *expects) {
+		hashedSecret := []byte("hashed-secret")
+		row := database.AIGatewayKey{}
+		dbm.EXPECT().GetAIGatewayKeyByHashedSecret(gomock.Any(), hashedSecret).Return(row, nil).AnyTimes()
+		check.Args(hashedSecret).Asserts(rbac.ResourceAIGatewayKey, policy.ActionRead).Returns(row)
+	}))
+	s.Run("UpdateAIGatewayKeyLastUsedAt", s.Mocked(func(dbm *dbmock.MockStore, _ *gofakeit.Faker, check *expects) {
+		params := database.UpdateAIGatewayKeyLastUsedAtParams{ID: uuid.New()}
+		dbm.EXPECT().UpdateAIGatewayKeyLastUsedAt(gomock.Any(), params).Return(nil).AnyTimes()
+		check.Args(params).Asserts(rbac.ResourceSystem, policy.ActionUpdate).Returns()
+	}))
 }
 
 func (s *MethodTestSuite) TestTelemetry() {
