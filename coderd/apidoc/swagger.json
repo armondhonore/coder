@@ -49,6 +49,23 @@
 				}
 			}
 		},
+		"/aibridge/serve": {
+			"get": {
+				"tags": ["Enterprise"],
+				"summary": "AI Gateway serve",
+				"operationId": "ai-gateway-serve",
+				"responses": {
+					"101": {
+						"description": "Switching Protocols"
+					}
+				},
+				"security": [
+					{
+						"CoderSessionToken": []
+					}
+				]
+			}
+		},
 		"/api/experimental/chats": {
 			"get": {
 				"description": "Experimental: this endpoint is subject to change.",

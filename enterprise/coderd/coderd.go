@@ -311,6 +311,22 @@ func New(ctx context.Context, options *Options) (_ *API, err error) {
 		})
 	})
 
+	// /aibridge/serve is the DRPC-over-WebSocket endpoint that standalone AI
+	// Gateway replicas connect to. It authenticates with a gateway key instead
+	// of a user session, and deliberately sits outside the /aibridge catch-all
+	// so the catch-all's overload middleware does not apply to it.
+	api.AGPL.APIHandler.Group(func(r chi.Router) {
+		r.Route("/aibridge/serve", func(r chi.Router) {
+			r.Use(
+				api.RequireFeatureMW(codersdk.FeatureAIBridge),
+				httpmw.ExtractAIGatewayKeyAuthenticated(httpmw.ExtractAIGatewayKeyConfig{
+					DB: api.Database,
+				}),
+			)
+			r.Get("/", api.aiBridgeServe)
+		})
+	})
+
 	api.AGPL.APIHandler.Group(func(r chi.Router) {
 		r.Get("/entitlements", api.serveEntitlements)
 		// /regions overrides the AGPL /regions endpoint

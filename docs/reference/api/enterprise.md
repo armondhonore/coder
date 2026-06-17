@@ -84,6 +84,26 @@ curl -X GET http://coder-server:8080/.well-known/oauth-protected-resource \
 |--------|---------------------------------------------------------|-------------|------------------------------------------------------------------------------------------------|
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | OK          | [codersdk.OAuth2ProtectedResourceMetadata](schemas.md#codersdkoauth2protectedresourcemetadata) |
 
+## AI Gateway serve
+
+### Code samples
+
+```shell
+# Example request using curl
+curl -X GET http://coder-server:8080/aibridge/serve \
+  -H 'Coder-Session-Token: API_KEY'
+```
+
+`GET /aibridge/serve`
+
+### Responses
+
+| Status | Meaning                                                                  | Description         | Schema |
+|--------|--------------------------------------------------------------------------|---------------------|--------|
+| 101    | [Switching Protocols](https://tools.ietf.org/html/rfc7231#section-6.2.2) | Switching Protocols |        |
+
+To perform this operation, you must be authenticated. [Learn more](authentication.md).
+
 ## List AI Gateway keys
 
 ### Code samples
