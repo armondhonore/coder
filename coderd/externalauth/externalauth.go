@@ -229,7 +229,7 @@ func (c *Config) RefreshToken(ctx context.Context, db database.Store, externalAu
 	refreshers[key] = struct{}{}
 	mu.Unlock()
 
-	link, err := c.refreshToken(ctx, db, externalAuthLink)
+	link, err := c.innerRefreshToken(ctx, db, externalAuthLink)
 
 	// Let all subscribers know the results.
 	mu.Lock()
@@ -246,8 +246,7 @@ func (c *Config) RefreshToken(ctx context.Context, db database.Store, externalAu
 	return link, err
 }
 
-// RefreshToken automatically refreshes the token if expired and permitted.
-func (c *Config) refreshToken(ctx context.Context, db database.Store, externalAuthLink database.ExternalAuthLink) (database.ExternalAuthLink, error) {
+func (c *Config) innerRefreshToken(ctx context.Context, db database.Store, externalAuthLink database.ExternalAuthLink) (database.ExternalAuthLink, error) {
 	// If the token is expired and refresh is disabled, we prompt
 	// the user to authenticate again.
 	if c.NoRefresh &&

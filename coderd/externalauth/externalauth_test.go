@@ -358,7 +358,7 @@ func TestRefreshToken(t *testing.T) {
 						subscribed := 0
 						for {
 							<-subscribeCh
-							subscribed = subscribed + 1
+							subscribed++
 							if subscribed >= parallelRequests-1 {
 								return nil
 							}
