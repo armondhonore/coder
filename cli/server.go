@@ -66,6 +66,7 @@ import (
 	"github.com/coder/coder/v2/coderd"
 	"github.com/coder/coder/v2/coderd/aibridged"
 	"github.com/coder/coder/v2/coderd/autobuild"
+	"github.com/coder/coder/v2/coderd/cryptokeys"
 	"github.com/coder/coder/v2/coderd/database"
 	"github.com/coder/coder/v2/coderd/database/awsiamrds"
 	"github.com/coder/coder/v2/coderd/database/dbauthz"
@@ -792,9 +793,26 @@ func (r *RootCmd) Server(newAPI func(context.Context, *coderd.Options) (*coderd.
 			// Use NATS for pubsub if the experiment is enabled.
 			if experiments.Enabled(codersdk.ExperimentNATSPubsub) {
 				token := fmt.Sprintf("%x", sha256.Sum256([]byte(dbURL)))
-				natsps, err := nats.New(ctx, logger.Named("pubsub"), nats.Options{
-					ClusterAuthToken: token,
-				})
+				natsOpts := nats.Options{ClusterAuthToken: token}
+
+				// Enable mutual TLS on inter-replica cluster routes when a
+				// relay URL is configured (i.e. HA). The per-replica leaf
+				// certificate's IP-SAN is derived from the relay URL host,
+				// which is the address peers dial for cluster routes.
+				if vals.DERP.Server.RelayURL.String() != "" {
+					ca, err := cryptokeys.FetchNATSCA(ctx, options.Database)
+					if err != nil {
+						return xerrors.Errorf("fetch nats cluster CA: %w", err)
+					}
+					clusterTLS, err := nats.ClusterTLSOptionsFromRelayURL(
+						vals.DERP.Server.RelayURL.Value(), ca.Cert, ca.Key)
+					if err != nil {
+						return xerrors.Errorf("configure nats cluster TLS: %w", err)
+					}
+					natsOpts.ClusterTLS = clusterTLS
+				}
+
+				natsps, err := nats.New(ctx, logger.Named("pubsub"), natsOpts)
 				if err != nil {
 					return xerrors.Errorf("create nats pubsub: %w", err)
 				}
