@@ -210,7 +210,6 @@ type Server struct {
 
 	aibridgeTransportFactory *atomic.Pointer[aibridge.TransportFactory]
 	aiGatewayRoutingEnabled  bool
-
 	// Configuration
 	pendingChatAcquireInterval time.Duration
 	maxChatsPerAcquire         int32
@@ -3277,6 +3276,25 @@ func BuildSingleUserChatMessageInsertParams(
 }
 
 // Config configures a chat processor.
+// WorkerID returns the worker ID assigned to this pod's chatd instance.
+// The handler uses it to decide whether the chat is owned locally.
+func (p *Server) WorkerID() uuid.UUID { return p.workerID }
+
+// SnapshotRuntime returns a point-in-time view of the in-memory state for
+// the given chat on this pod. It is safe to call from any goroutine.
+func (p *Server) SnapshotRuntime(chatID uuid.UUID) ChatRuntimeSnapshot {
+	snap := ChatRuntimeSnapshot{
+		LocalWorkerID: p.workerID,
+		Episodes:      p.messagePartBuffer.InspectChat(chatID),
+	}
+	// chatWorker.manager is only populated after Start(). Guard for tests that
+	// run with ChatWorkerDisabled=true.
+	if p.chatWorker != nil && p.chatWorker.manager != nil {
+		snap.Runners = p.chatWorker.manager.InspectChat(chatID)
+	}
+	return snap
+}
+
 type Config struct {
 	Logger    slog.Logger
 	Database  database.Store
@@ -3314,6 +3332,14 @@ type Config struct {
 
 	NotificationsEnqueuer notifications.Enqueuer
 	Auditor               *atomic.Pointer[audit.Auditor]
+}
+
+// ChatRuntimeSnapshot is a point-in-time view of a chat's in-memory state on
+// the pod that owns it.
+type ChatRuntimeSnapshot struct {
+	LocalWorkerID uuid.UUID
+	Runners       []RunnerSnapshot
+	Episodes      []messagepartbuffer.EpisodeInfo
 }
 
 // New creates a new chat processor with the required pubsub dependency.
