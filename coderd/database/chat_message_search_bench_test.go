@@ -20,11 +20,10 @@ import (
 	"github.com/coder/coder/v2/coderd/database"
 	"github.com/coder/coder/v2/coderd/database/dbgen"
 	"github.com/coder/coder/v2/coderd/database/dbtestutil"
-	"github.com/coder/coder/v2/testutil"
 )
 
 func BenchmarkChatMessageSearchIndex(b *testing.B) {
-	ctx := testutil.Context(b, 30*time.Minute)
+	ctx := b.Context()
 	db, _, sqlDB := dbtestutil.NewDBWithSQLDB(b)
 
 	createChatMessageSearchTextFunction(ctx, b, sqlDB)
@@ -170,6 +169,7 @@ func seedChatMessageSearchCorpus(ctx context.Context, t testing.TB, db database.
 				}
 			}
 		}
+		t.Logf("user: %d chats:%d messages:%d", userIndex, config.ChatsPerUser, config.MessagesPerChat)
 	}
 }
 
