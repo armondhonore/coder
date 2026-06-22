@@ -162,15 +162,19 @@ jobs:
       - name: Check docs
         run: pnpm check-docs
 
-      # Vale prose linter, advisory only. Scoped to changed Markdown under
-      # docs/. Every Vale step is `continue-on-error` so this section can
-      # never block the required `lint-docs` job: a `vale sync` network
-      # blip or a baseline rule violation surfaces as an annotation, not a
-      # merge gate. Only markdownlint/table-formatter above stay blocking.
-      # `vale --no-exit` additionally keeps the baseline error count from
-      # un-overridden upstream Google rules from failing the step. Lives
-      # here rather than a standalone workflow so docs lint stays in the
-      # single required CI umbrella (see #25608). See DOCS-40.
+      # Vale prose linter. Scoped to changed Markdown under docs/. The
+      # surrounding setup steps (cache restore, sync, cache save) stay
+      # `continue-on-error` so cache or network flakes never block merge;
+      # only the prose lint step itself is allowed to fail the job.
+      # Severity model: error-level Vale findings exit non-zero and fail
+      # the step, which fails the required `lint-docs` job and blocks
+      # merge. Warning- and suggestion-level findings render as PR
+      # annotations but do not affect the exit code. This matches Vale's
+      # native exit semantics (only errors trigger non-zero exit) and the
+      # repo's style-guide doctrine that any rule we enable ships with
+      # zero baseline noise. Lives here rather than a standalone workflow
+      # so docs lint stays in the single required CI umbrella (see
+      # #25608). See DOCS-40, DOCS-425, DOCS-426.
       - name: Detect changed Markdown
         id: changed-md
         continue-on-error: true
@@ -216,16 +220,18 @@ jobs:
 
       - name: Vale prose lint
         if: steps.changed-md.outputs.any_changed == 'true'
-        continue-on-error: true
         env:
           ALL_CHANGED_FILES: ${{ steps.changed-md.outputs.all_changed_files }}
           # Non-interactive: let mise auto-install the pinned Vale on first use.
           MISE_YES: "1"
         run: |
+          # pipefail propagates Vale's exit code through the jq pipe so
+          # an error-level finding fails the step. Without it, jq's
+          # success would mask Vale's non-zero exit.
+          set -o pipefail
           # all_changed_files is ACMRD and so lists paths this PR deleted.
-          # Vale errors on a missing file (--no-exit only suppresses alert
-          # exits, not runtime errors), so keep only docs/ paths still on
-          # disk. See DOCS-40.
+          # Vale errors on a missing file, so keep only docs/ paths still
+          # on disk. See DOCS-40.
           files=$(printf '%s\n' "$ALL_CHANGED_FILES" \
             | tr ',' '\n' \
             | grep -E '^docs/' \
@@ -241,8 +247,12 @@ jobs:
           # suggestion render with their actual Vale severities. URL-
           # encode message bodies for `%`, `\r`, and `\n` per the
           # GitHub Actions workflow command spec. See DOCS-426.
+          # Vale exits non-zero only on error-level alerts (warnings and
+          # suggestions never trigger non-zero exit), so dropping
+          # --no-exit lets error-level findings fail the step while
+          # leaving lower-severity findings advisory. See DOCS-425.
           printf '%s\n' "$files" \
-            | xargs -d '\n' mise exec "aqua:errata-ai/vale" -- vale --no-exit --output=JSON \
+            | xargs -d '\n' mise exec "aqua:errata-ai/vale" -- vale --output=JSON \
             | jq -r '
                 to_entries[]
                 | .key as $file
