@@ -112,6 +112,100 @@ func Test_getNextTransition_TaskAutoPause(t *testing.T) {
 	}
 }
 
+func TestShouldRemindAutostop(t *testing.T) {
+	t.Parallel()
+
+	currentTick := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	const ttl = time.Hour
+
+	// inWindow places the deadline 30m out, inside the 1h lead window.
+	inWindow := func() database.WorkspaceBuild {
+		return database.WorkspaceBuild{
+			Transition: database.WorkspaceTransitionStart,
+			Deadline:   currentTick.Add(30 * time.Minute),
+		}
+	}
+
+	testCases := []struct {
+		Name             string
+		Build            database.WorkspaceBuild
+		TemplateSchedule schedule.TemplateScheduleOptions
+		Expected         bool
+	}{
+		{
+			Name:             "InWindow",
+			Build:            inWindow(),
+			TemplateSchedule: schedule.TemplateScheduleOptions{TimeTilAutostopNotify: ttl},
+			Expected:         true,
+		},
+		{
+			Name:             "TemplateDisabled",
+			Build:            inWindow(),
+			TemplateSchedule: schedule.TemplateScheduleOptions{TimeTilAutostopNotify: 0},
+			Expected:         false,
+		},
+		{
+			Name: "TransitionStop",
+			Build: func() database.WorkspaceBuild {
+				b := inWindow()
+				b.Transition = database.WorkspaceTransitionStop
+				return b
+			}(),
+			TemplateSchedule: schedule.TemplateScheduleOptions{TimeTilAutostopNotify: ttl},
+			Expected:         false,
+		},
+		{
+			Name: "ZeroDeadline",
+			Build: func() database.WorkspaceBuild {
+				b := inWindow()
+				b.Deadline = time.Time{}
+				return b
+			}(),
+			TemplateSchedule: schedule.TemplateScheduleOptions{TimeTilAutostopNotify: ttl},
+			Expected:         false,
+		},
+		{
+			Name: "DeadlineInPast",
+			Build: func() database.WorkspaceBuild {
+				b := inWindow()
+				b.Deadline = currentTick.Add(-time.Minute)
+				return b
+			}(),
+			TemplateSchedule: schedule.TemplateScheduleOptions{TimeTilAutostopNotify: ttl},
+			Expected:         false,
+		},
+		{
+			Name: "BeforeWindow",
+			Build: func() database.WorkspaceBuild {
+				b := inWindow()
+				// Deadline two hours out, ttl is only one hour.
+				b.Deadline = currentTick.Add(2 * time.Hour)
+				return b
+			}(),
+			TemplateSchedule: schedule.TemplateScheduleOptions{TimeTilAutostopNotify: ttl},
+			Expected:         false,
+		},
+		{
+			Name: "AlreadyNotified",
+			Build: func() database.WorkspaceBuild {
+				b := inWindow()
+				b.NotifiedAutostopDeadline = b.Deadline
+				return b
+			}(),
+			TemplateSchedule: schedule.TemplateScheduleOptions{TimeTilAutostopNotify: ttl},
+			Expected:         false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.Name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tc.Expected, shouldRemindAutostop(tc.Build, tc.TemplateSchedule, currentTick))
+		})
+	}
+}
+
 func Test_isEligibleForAutostart(t *testing.T) {
 	t.Parallel()
 

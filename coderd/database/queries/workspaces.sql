@@ -870,6 +870,62 @@ WHERE
 	-- prebuilds reconciliation loop.
   	AND workspaces.owner_id != 'c42fdf75-3097-471c-8c33-fb52454d81c0'::UUID;
 
+-- name: GetWorkspacesEligibleForAutostopReminder :many
+-- Returns running workspaces whose latest start build is approaching its
+-- autostop deadline and for which a reminder notification has not yet been
+-- sent for the current deadline.
+--
+-- NOTE: time_til_autostop_notify has no upper bound. If it exceeds a
+-- workspace's remaining lifetime, the notify window already includes "now" at
+-- build creation. This query intentionally still only matches builds whose
+-- deadline is in the future (deadline > now) and whose marker has not yet been
+-- stamped (notified_autostop_deadline != deadline), so at most ONE reminder is
+-- ever produced for a given deadline regardless of how large the field is.
+SELECT
+	workspaces.id,
+	workspaces.name
+FROM
+	workspaces
+LEFT JOIN
+	workspace_builds ON workspace_builds.workspace_id = workspaces.id
+INNER JOIN
+	provisioner_jobs ON workspace_builds.job_id = provisioner_jobs.id
+INNER JOIN
+	templates ON workspaces.template_id = templates.id
+INNER JOIN
+	users ON workspaces.owner_id = users.id
+WHERE
+	workspace_builds.build_number = (
+		SELECT
+			MAX(build_number)
+		FROM
+			workspace_builds
+		WHERE
+			workspace_builds.workspace_id = workspaces.id
+	) AND
+	-- The latest build must be a successfully provisioned start build.
+	provisioner_jobs.job_status = 'succeeded'::provisioner_job_status AND
+	workspace_builds.transition = 'start'::workspace_transition AND
+	-- The workspace must not be dormant and its owner must not be suspended.
+	workspaces.dormant_at IS NULL AND
+	users.status != 'suspended'::user_status AND
+	-- The build must have a deadline that has not already passed. We never
+	-- "remind" about a stop that is already due.
+	workspace_builds.deadline != '0001-01-01 00:00:00+00'::timestamptz AND
+	workspace_builds.deadline > @now::timestamptz AND
+	-- The template must opt in to autostop reminders.
+	templates.time_til_autostop_notify > 0 AND
+	-- "now" must be within the lead window before the deadline. The field is
+	-- stored in nanoseconds, so convert to an interval the same way the
+	-- dormancy query does: nanoseconds / 1000000 yields milliseconds.
+	workspace_builds.deadline <= (@now::timestamptz) + (INTERVAL '1 millisecond' * (templates.time_til_autostop_notify / 1000000)) AND
+	-- A reminder has not yet been sent for THIS deadline.
+	workspace_builds.notified_autostop_deadline != workspace_builds.deadline AND
+	workspaces.deleted = 'false' AND
+	-- Prebuilt workspaces (identified by having the prebuilds system user as
+	-- owner_id) are handled by the prebuilds reconciliation loop.
+	workspaces.owner_id != 'c42fdf75-3097-471c-8c33-fb52454d81c0'::UUID;
+
 -- name: UpdateWorkspaceDormantDeletingAt :one
 UPDATE
     workspaces

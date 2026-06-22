@@ -3858,6 +3858,14 @@ func (m queryMetricsStore) GetWorkspacesByTemplateID(ctx context.Context, templa
 	return r0, r1
 }
 
+func (m queryMetricsStore) GetWorkspacesEligibleForAutostopReminder(ctx context.Context, now time.Time) ([]database.GetWorkspacesEligibleForAutostopReminderRow, error) {
+	start := time.Now()
+	r0, r1 := m.s.GetWorkspacesEligibleForAutostopReminder(ctx, now)
+	m.queryLatencies.WithLabelValues("GetWorkspacesEligibleForAutostopReminder").Observe(time.Since(start).Seconds())
+	m.queryCounts.WithLabelValues(httpmw.ExtractHTTPRoute(ctx), httpmw.ExtractHTTPMethod(ctx), "GetWorkspacesEligibleForAutostopReminder").Inc()
+	return r0, r1
+}
+
 func (m queryMetricsStore) GetWorkspacesEligibleForTransition(ctx context.Context, now time.Time) ([]database.GetWorkspacesEligibleForTransitionRow, error) {
 	start := time.Now()
 	r0, r1 := m.s.GetWorkspacesEligibleForTransition(ctx, now)
@@ -5943,6 +5951,14 @@ func (m queryMetricsStore) UpdateWorkspaceBuildFlagsByID(ctx context.Context, ar
 	r0 := m.s.UpdateWorkspaceBuildFlagsByID(ctx, arg)
 	m.queryLatencies.WithLabelValues("UpdateWorkspaceBuildFlagsByID").Observe(time.Since(start).Seconds())
 	m.queryCounts.WithLabelValues(httpmw.ExtractHTTPRoute(ctx), httpmw.ExtractHTTPMethod(ctx), "UpdateWorkspaceBuildFlagsByID").Inc()
+	return r0
+}
+
+func (m queryMetricsStore) UpdateWorkspaceBuildNotifiedAutostopDeadline(ctx context.Context, arg database.UpdateWorkspaceBuildNotifiedAutostopDeadlineParams) error {
+	start := time.Now()
+	r0 := m.s.UpdateWorkspaceBuildNotifiedAutostopDeadline(ctx, arg)
+	m.queryLatencies.WithLabelValues("UpdateWorkspaceBuildNotifiedAutostopDeadline").Observe(time.Since(start).Seconds())
+	m.queryCounts.WithLabelValues(httpmw.ExtractHTTPRoute(ctx), httpmw.ExtractHTTPMethod(ctx), "UpdateWorkspaceBuildNotifiedAutostopDeadline").Inc()
 	return r0
 }
 

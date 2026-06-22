@@ -63,8 +63,11 @@ type executorMetrics struct {
 // Stats contains information about one run of Executor.
 type Stats struct {
 	Transitions map[uuid.UUID]database.WorkspaceTransition
-	Elapsed     time.Duration
-	Errors      map[uuid.UUID]error
+	// AutostopReminders maps a workspace ID to the autostop deadline a reminder
+	// notification was enqueued for during this run.
+	AutostopReminders map[uuid.UUID]time.Time
+	Elapsed           time.Duration
+	Errors            map[uuid.UUID]error
 }
 
 // New returns a new wsactions executor.
@@ -169,8 +172,9 @@ func (e *Executor) hasValidProvisioner(ctx context.Context, tx database.Store, t
 
 func (e *Executor) runOnce(t time.Time) Stats {
 	stats := Stats{
-		Transitions: make(map[uuid.UUID]database.WorkspaceTransition),
-		Errors:      make(map[uuid.UUID]error),
+		Transitions:       make(map[uuid.UUID]database.WorkspaceTransition),
+		AutostopReminders: make(map[uuid.UUID]time.Time),
+		Errors:            make(map[uuid.UUID]error),
 	}
 	// we build the map of transitions concurrently, so need a mutex to serialize writes to the map
 	statsMu := sync.Mutex{}
@@ -556,7 +560,210 @@ func (e *Executor) runOnce(t time.Time) Stats {
 		e.log.Error(e.ctx, "workspace scheduling errgroup failed", slog.Error(err))
 	}
 
+	// Send autostop reminder notifications for workspaces approaching their
+	// deadline. This is a separate scan because its eligibility conditions
+	// differ from the transition query (it targets running workspaces whose
+	// deadline is still in the future) and the result set is expected to be
+	// tiny.
+	e.remindUpcomingAutostops(currentTick, &stats, &statsMu)
+
 	return stats
+}
+
+// remindUpcomingAutostops enqueues a one-time reminder notification for each
+// running workspace whose autostop deadline is within the template's configured
+// lead window (time_til_autostop_notify).
+func (e *Executor) remindUpcomingAutostops(currentTick time.Time, stats *Stats, statsMu *sync.Mutex) {
+	candidates, err := e.db.GetWorkspacesEligibleForAutostopReminder(e.ctx, currentTick)
+	if err != nil {
+		e.log.Error(e.ctx, "get workspaces eligible for autostop reminder", slog.Error(err))
+		return
+	}
+
+	eg := errgroup.Group{}
+	// Limit the concurrency to avoid overloading the database.
+	eg.SetLimit(10)
+
+	for _, candidate := range candidates {
+		wsID := candidate.ID
+		log := e.log.With(
+			slog.F("workspace_id", wsID),
+			slog.F("workspace_name", candidate.Name),
+		)
+
+		eg.Go(func() error {
+			err := e.remindWorkspaceAutostop(currentTick, wsID, log, stats, statsMu)
+			if err != nil && !xerrors.Is(err, context.Canceled) {
+				log.Error(e.ctx, "failed to send autostop reminder", slog.Error(err))
+				statsMu.Lock()
+				stats.Errors[wsID] = err
+				statsMu.Unlock()
+			}
+			// Always return nil to avoid short-circuiting the loop.
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		e.log.Error(e.ctx, "autostop reminder errgroup failed", slog.Error(err))
+	}
+}
+
+// remindWorkspaceAutostop re-validates a single workspace's reminder eligibility
+// inside a transaction (so concurrent replicas and deadline bumps are handled
+// safely), stamps the idempotence marker, and enqueues the notification after
+// the transaction commits.
+func (e *Executor) remindWorkspaceAutostop(currentTick time.Time, wsID uuid.UUID, log slog.Logger, stats *Stats, statsMu *sync.Mutex) error {
+	var (
+		shouldNotify bool
+		ws           database.Workspace
+		deadline     time.Time
+		buildID      uuid.UUID
+	)
+
+	err := e.db.InTx(func(tx database.Store) error {
+		ok, err := tx.TryAcquireLock(e.ctx, database.GenLockID(fmt.Sprintf("lifecycle-executor:%s", wsID)))
+		if err != nil {
+			return xerrors.Errorf("try acquire lifecycle executor lock: %w", err)
+		}
+		if !ok {
+			// Another replica owns this workspace for this tick.
+			log.Debug(e.ctx, "unable to acquire lock for workspace autostop reminder, skipping")
+			return nil
+		}
+
+		ws, err = tx.GetWorkspaceByID(e.ctx, wsID)
+		if err != nil {
+			return xerrors.Errorf("get workspace by id: %w", err)
+		}
+
+		build, err := tx.GetLatestWorkspaceBuildByWorkspaceID(e.ctx, wsID)
+		if err != nil {
+			return xerrors.Errorf("get latest workspace build: %w", err)
+		}
+
+		templateSchedule, err := (*(e.templateScheduleStore.Load())).Get(e.ctx, tx, ws.TemplateID)
+		if err != nil {
+			return xerrors.Errorf("get template scheduling options: %w", err)
+		}
+
+		// Re-validate the volatile eligibility conditions inside the
+		// transaction (the build deadline and marker, plus workspace
+		// dormancy/deletion). The SQL scan already filtered on user status and
+		// job status, which change rarely. The initial scan ran outside any
+		// transaction, so the deadline may have been bumped, the reminder may
+		// already have been sent by another replica, the template setting may
+		// have changed, or the workspace may have become dormant or deleted.
+		if ws.DormantAt.Valid || ws.Deleted {
+			return nil
+		}
+		if !shouldRemindAutostop(build, templateSchedule, currentTick) {
+			return nil
+		}
+
+		// Stamp the marker so subsequent ticks (and other replicas) skip this
+		// deadline. This is what guarantees a single reminder per deadline.
+		if err := tx.UpdateWorkspaceBuildNotifiedAutostopDeadline(e.ctx, database.UpdateWorkspaceBuildNotifiedAutostopDeadlineParams{
+			ID:                       build.ID,
+			NotifiedAutostopDeadline: build.Deadline,
+			UpdatedAt:                dbtime.Now(),
+		}); err != nil {
+			return xerrors.Errorf("update workspace build notified autostop deadline: %w", err)
+		}
+
+		shouldNotify = true
+		deadline = build.Deadline
+		buildID = build.ID
+		return nil
+		// Run with RepeatableRead isolation so the re-validation and marker
+		// update see a consistent snapshot of the build.
+	}, &database.TxOptions{
+		Isolation:    sql.LevelRepeatableRead,
+		TxIdentifier: "lifecycle_autostop_reminder",
+	})
+	if err != nil {
+		return xerrors.Errorf("remind workspace autostop: %w", err)
+	}
+	if !shouldNotify {
+		return nil
+	}
+
+	statsMu.Lock()
+	stats.AutostopReminders[wsID] = deadline
+	statsMu.Unlock()
+
+	// Enqueue after the transaction commits, matching the dormancy/auto-update
+	// notification pattern. The deadline label is the (stable) deadline
+	// timestamp, so the notification's dedupe hash stays effective across ticks.
+	if _, err := e.notificationsEnqueuer.Enqueue(
+		e.ctx,
+		ws.OwnerID,
+		notifications.TemplateWorkspaceAutostopReminder,
+		map[string]string{
+			"workspace": ws.Name,
+			"deadline":  deadline.UTC().Format(time.RFC1123),
+		},
+		"lifecycle_executor",
+		// Associate this notification with all the related entities.
+		ws.ID, ws.OwnerID, ws.TemplateID, ws.OrganizationID,
+	); err != nil {
+		log.Warn(e.ctx, "failed to notify of upcoming workspace autostop", slog.Error(err))
+
+		// Re-arm the marker so a later tick retries; otherwise the committed
+		// marker would permanently suppress this deadline's only notification.
+		// The notifications subsystem's own dedupe_hash prevents same-day
+		// duplicates if the enqueue actually partially succeeded.
+		if rearmErr := e.db.UpdateWorkspaceBuildNotifiedAutostopDeadline(e.ctx, database.UpdateWorkspaceBuildNotifiedAutostopDeadlineParams{
+			ID:                       buildID,
+			NotifiedAutostopDeadline: time.Time{},
+			UpdatedAt:                dbtime.Now(),
+		}); rearmErr != nil {
+			log.Warn(e.ctx, "failed to re-arm autostop reminder marker after enqueue failure", slog.Error(rearmErr))
+		}
+		// Also drop the stats entry so the failed send isn't reported as sent.
+		statsMu.Lock()
+		delete(stats.AutostopReminders, wsID)
+		statsMu.Unlock()
+	}
+
+	return nil
+}
+
+// shouldRemindAutostop reports whether a reminder notification should be sent
+// for the workspace's latest build at currentTick.
+//
+// time_til_autostop_notify has no upper bound. If it exceeds a
+// workspace's remaining lifetime, the notify window already covers "now" at
+// build creation. This is still safe: we require deadline > now (so we never
+// remind once the stop is due) and the marker (NotifiedAutostopDeadline ==
+// Deadline, stamped after the first send) filters every subsequent tick. The
+// result is exactly one reminder per deadline, never one per tick.
+func shouldRemindAutostop(build database.WorkspaceBuild, templateSchedule schedule.TemplateScheduleOptions, currentTick time.Time) bool {
+	// The template must opt in to autostop reminders.
+	if templateSchedule.TimeTilAutostopNotify <= 0 {
+		return false
+	}
+
+	// Only running (start) workspaces with a real deadline are eligible.
+	if build.Transition != database.WorkspaceTransitionStart || build.Deadline.IsZero() {
+		return false
+	}
+
+	// Never remind about a stop that is already due.
+	if !build.Deadline.After(currentTick) {
+		return false
+	}
+
+	// "now" must be within the lead window before the deadline, i.e.
+	// deadline <= now + time_til_autostop_notify.
+	if build.Deadline.After(currentTick.Add(templateSchedule.TimeTilAutostopNotify)) {
+		return false
+	}
+
+	// Idempotence: a reminder has not yet been sent for THIS deadline. The
+	// marker re-arms automatically when the deadline changes (e.g. an activity
+	// bump), so a new reminder fires once the new deadline re-enters the window.
+	return !build.NotifiedAutostopDeadline.Equal(build.Deadline)
 }
 
 // getNextTransition returns the next eligible transition for the workspace

@@ -973,6 +973,17 @@ type sqlcQuerier interface {
 	GetWorkspaces(ctx context.Context, arg GetWorkspacesParams) ([]GetWorkspacesRow, error)
 	GetWorkspacesAndAgentsByOwnerID(ctx context.Context, ownerID uuid.UUID) ([]GetWorkspacesAndAgentsByOwnerIDRow, error)
 	GetWorkspacesByTemplateID(ctx context.Context, templateID uuid.UUID) ([]WorkspaceTable, error)
+	// Returns running workspaces whose latest start build is approaching its
+	// autostop deadline and for which a reminder notification has not yet been
+	// sent for the current deadline.
+	//
+	// NOTE: time_til_autostop_notify has no upper bound. If it exceeds a
+	// workspace's remaining lifetime, the notify window already includes "now" at
+	// build creation. This query intentionally still only matches builds whose
+	// deadline is in the future (deadline > now) and whose marker has not yet been
+	// stamped (notified_autostop_deadline != deadline), so at most ONE reminder is
+	// ever produced for a given deadline regardless of how large the field is.
+	GetWorkspacesEligibleForAutostopReminder(ctx context.Context, now time.Time) ([]GetWorkspacesEligibleForAutostopReminderRow, error)
 	GetWorkspacesEligibleForTransition(ctx context.Context, now time.Time) ([]GetWorkspacesEligibleForTransitionRow, error)
 	GetWorkspacesForWorkspaceMetrics(ctx context.Context) ([]GetWorkspacesForWorkspaceMetricsRow, error)
 	// Stamps the pinned hash and error on every not-yet-hydrated chat for
@@ -1472,6 +1483,11 @@ type sqlcQuerier interface {
 	UpdateWorkspaceBuildCostByID(ctx context.Context, arg UpdateWorkspaceBuildCostByIDParams) error
 	UpdateWorkspaceBuildDeadlineByID(ctx context.Context, arg UpdateWorkspaceBuildDeadlineByIDParams) error
 	UpdateWorkspaceBuildFlagsByID(ctx context.Context, arg UpdateWorkspaceBuildFlagsByIDParams) error
+	// Stamps the deadline value that an autostop reminder was last sent for. Once
+	// this equals the build's deadline the reminder is considered delivered, which
+	// makes the lifecycle executor's reminder pass idempotent and HA-safe. It
+	// re-arms automatically when the deadline changes (e.g. an activity bump).
+	UpdateWorkspaceBuildNotifiedAutostopDeadline(ctx context.Context, arg UpdateWorkspaceBuildNotifiedAutostopDeadlineParams) error
 	UpdateWorkspaceBuildProvisionerStateByID(ctx context.Context, arg UpdateWorkspaceBuildProvisionerStateByIDParams) error
 	UpdateWorkspaceDeletedByID(ctx context.Context, arg UpdateWorkspaceDeletedByIDParams) error
 	UpdateWorkspaceDormantDeletingAt(ctx context.Context, arg UpdateWorkspaceDormantDeletingAtParams) (WorkspaceTable, error)

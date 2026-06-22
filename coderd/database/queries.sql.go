@@ -36329,6 +36329,30 @@ func (q *sqlQuerier) UpdateWorkspaceBuildFlagsByID(ctx context.Context, arg Upda
 	return err
 }
 
+const updateWorkspaceBuildNotifiedAutostopDeadline = `-- name: UpdateWorkspaceBuildNotifiedAutostopDeadline :exec
+UPDATE
+	workspace_builds
+SET
+	notified_autostop_deadline = $1::timestamptz,
+	updated_at = $2::timestamptz
+WHERE id = $3::uuid
+`
+
+type UpdateWorkspaceBuildNotifiedAutostopDeadlineParams struct {
+	NotifiedAutostopDeadline time.Time `db:"notified_autostop_deadline" json:"notified_autostop_deadline"`
+	UpdatedAt                time.Time `db:"updated_at" json:"updated_at"`
+	ID                       uuid.UUID `db:"id" json:"id"`
+}
+
+// Stamps the deadline value that an autostop reminder was last sent for. Once
+// this equals the build's deadline the reminder is considered delivered, which
+// makes the lifecycle executor's reminder pass idempotent and HA-safe. It
+// re-arms automatically when the deadline changes (e.g. an activity bump).
+func (q *sqlQuerier) UpdateWorkspaceBuildNotifiedAutostopDeadline(ctx context.Context, arg UpdateWorkspaceBuildNotifiedAutostopDeadlineParams) error {
+	_, err := q.db.ExecContext(ctx, updateWorkspaceBuildNotifiedAutostopDeadline, arg.NotifiedAutostopDeadline, arg.UpdatedAt, arg.ID)
+	return err
+}
+
 const updateWorkspaceBuildProvisionerStateByID = `-- name: UpdateWorkspaceBuildProvisionerStateByID :exec
 UPDATE
 	workspace_builds
@@ -38199,6 +38223,91 @@ func (q *sqlQuerier) GetWorkspacesByTemplateID(ctx context.Context, templateID u
 			&i.GroupACL,
 			&i.UserACL,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getWorkspacesEligibleForAutostopReminder = `-- name: GetWorkspacesEligibleForAutostopReminder :many
+SELECT
+	workspaces.id,
+	workspaces.name
+FROM
+	workspaces
+LEFT JOIN
+	workspace_builds ON workspace_builds.workspace_id = workspaces.id
+INNER JOIN
+	provisioner_jobs ON workspace_builds.job_id = provisioner_jobs.id
+INNER JOIN
+	templates ON workspaces.template_id = templates.id
+INNER JOIN
+	users ON workspaces.owner_id = users.id
+WHERE
+	workspace_builds.build_number = (
+		SELECT
+			MAX(build_number)
+		FROM
+			workspace_builds
+		WHERE
+			workspace_builds.workspace_id = workspaces.id
+	) AND
+	-- The latest build must be a successfully provisioned start build.
+	provisioner_jobs.job_status = 'succeeded'::provisioner_job_status AND
+	workspace_builds.transition = 'start'::workspace_transition AND
+	-- The workspace must not be dormant and its owner must not be suspended.
+	workspaces.dormant_at IS NULL AND
+	users.status != 'suspended'::user_status AND
+	-- The build must have a deadline that has not already passed. We never
+	-- "remind" about a stop that is already due.
+	workspace_builds.deadline != '0001-01-01 00:00:00+00'::timestamptz AND
+	workspace_builds.deadline > $1::timestamptz AND
+	-- The template must opt in to autostop reminders.
+	templates.time_til_autostop_notify > 0 AND
+	-- "now" must be within the lead window before the deadline. The field is
+	-- stored in nanoseconds, so convert to an interval the same way the
+	-- dormancy query does: nanoseconds / 1000000 yields milliseconds.
+	workspace_builds.deadline <= ($1::timestamptz) + (INTERVAL '1 millisecond' * (templates.time_til_autostop_notify / 1000000)) AND
+	-- A reminder has not yet been sent for THIS deadline.
+	workspace_builds.notified_autostop_deadline != workspace_builds.deadline AND
+	workspaces.deleted = 'false' AND
+	-- Prebuilt workspaces (identified by having the prebuilds system user as
+	-- owner_id) are handled by the prebuilds reconciliation loop.
+	workspaces.owner_id != 'c42fdf75-3097-471c-8c33-fb52454d81c0'::UUID
+`
+
+type GetWorkspacesEligibleForAutostopReminderRow struct {
+	ID   uuid.UUID `db:"id" json:"id"`
+	Name string    `db:"name" json:"name"`
+}
+
+// Returns running workspaces whose latest start build is approaching its
+// autostop deadline and for which a reminder notification has not yet been
+// sent for the current deadline.
+//
+// NOTE: time_til_autostop_notify has no upper bound. If it exceeds a
+// workspace's remaining lifetime, the notify window already includes "now" at
+// build creation. This query intentionally still only matches builds whose
+// deadline is in the future (deadline > now) and whose marker has not yet been
+// stamped (notified_autostop_deadline != deadline), so at most ONE reminder is
+// ever produced for a given deadline regardless of how large the field is.
+func (q *sqlQuerier) GetWorkspacesEligibleForAutostopReminder(ctx context.Context, now time.Time) ([]GetWorkspacesEligibleForAutostopReminderRow, error) {
+	rows, err := q.db.QueryContext(ctx, getWorkspacesEligibleForAutostopReminder, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetWorkspacesEligibleForAutostopReminderRow
+	for rows.Next() {
+		var i GetWorkspacesEligibleForAutostopReminderRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

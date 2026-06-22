@@ -141,6 +141,18 @@ SET
 	updated_at = @updated_at::timestamptz
 WHERE id = @id::uuid;
 
+-- name: UpdateWorkspaceBuildNotifiedAutostopDeadline :exec
+-- Stamps the deadline value that an autostop reminder was last sent for. Once
+-- this equals the build's deadline the reminder is considered delivered, which
+-- makes the lifecycle executor's reminder pass idempotent and HA-safe. It
+-- re-arms automatically when the deadline changes (e.g. an activity bump).
+UPDATE
+	workspace_builds
+SET
+	notified_autostop_deadline = @notified_autostop_deadline::timestamptz,
+	updated_at = @updated_at::timestamptz
+WHERE id = @id::uuid;
+
 -- name: GetActiveWorkspaceBuildsByTemplateID :many
 SELECT wb.*
 FROM (
