@@ -200,6 +200,16 @@ type WatchInboxNotificationsParams = Readonly<{
 	read_status?: "read" | "unread" | "all";
 }>;
 
+// TODO(AIGOV-291): replace with the generated type from typesGenerated.ts once
+// the GET /groups/{group}/members/ai/spend endpoint exists in the backend.
+export type GroupMemberAISpend = Readonly<{
+	user_id: string;
+	current_spend_micros: number;
+	spend_limit_micros: number | null;
+	effective_group: { id: string; name: string } | null;
+	limit_source: "group" | "override" | null;
+}>;
+
 export function watchInboxNotifications(
 	params?: WatchInboxNotificationsParams,
 ): OneWayWebSocket<TypesGen.GetInboxNotificationResponse> {
@@ -2320,6 +2330,15 @@ class ApiMethods {
 
 	deleteGroupAIBudget = async (groupId: string): Promise<void> => {
 		await this.axios.delete(`/api/v2/groups/${groupId}/ai/budget`);
+	};
+
+	getGroupMembersAISpend = async (
+		groupId: string,
+	): Promise<GroupMemberAISpend[]> => {
+		const response = await this.axios.get(
+			`/api/v2/groups/${groupId}/members/ai/spend`,
+		);
+		return response.data;
 	};
 
 	getWorkspaceQuota = async (

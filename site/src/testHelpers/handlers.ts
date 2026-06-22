@@ -351,6 +351,30 @@ export const handlers = [
 		return new HttpResponse(null, { status: 204 });
 	}),
 
+	http.get("/api/v2/groups/:groupId/members/ai/spend", ({ params }) => {
+		const effectiveGroup = {
+			id: String(params.groupId),
+			name: MockGroup.name,
+		};
+
+		return HttpResponse.json([
+			{
+				user_id: M.MockUserOwner.id,
+				current_spend_micros: 1_345_000_000,
+				spend_limit_micros: 9_000_000_000,
+				effective_group: effectiveGroup,
+				limit_source: "override",
+			},
+			{
+				user_id: M.MockUserMember.id,
+				current_spend_micros: 5_492_000_000,
+				spend_limit_micros: 7_000_000_000,
+				effective_group: effectiveGroup,
+				limit_source: "group",
+			},
+		]);
+	}),
+
 	http.get("/api/v2/workspace-quota/:userId", () => {
 		return HttpResponse.json(MockWorkspaceQuota);
 	}),

@@ -1,10 +1,15 @@
 import { EllipsisVerticalIcon, UserPlusIcon } from "lucide-react";
-import { type FC, useState } from "react";
-import { useMutation, useQueryClient } from "react-query";
+import { type FC, useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "react-query";
 import { useOutletContext } from "react-router";
 import { toast } from "sonner";
+import type { GroupMemberAISpend } from "#/api/api";
 import { getErrorDetail, getErrorMessage } from "#/api/errors";
-import { addMembers, removeMember } from "#/api/queries/groups";
+import {
+	addMembers,
+	groupMembersAISpend,
+	removeMember,
+} from "#/api/queries/groups";
 import type {
 	Group,
 	OrganizationMemberWithUserData,
@@ -30,6 +35,7 @@ import { UsersFilter } from "#/components/Filter/UsersFilter";
 import { LastSeen } from "#/components/LastSeen/LastSeen";
 import { MultiMemberSelect } from "#/components/MultiUserSelect/MultiUserSelect";
 import { PaginationContainer } from "#/components/PaginationWidget/PaginationContainer";
+import { Skeleton } from "#/components/Skeleton/Skeleton";
 import { Spinner } from "#/components/Spinner/Spinner";
 import {
 	Table,
@@ -43,8 +49,14 @@ import { useDashboard } from "#/modules/dashboard/useDashboard";
 import { useFeatureVisibility } from "#/modules/dashboard/useFeatureVisibility";
 import { isEveryoneGroup } from "#/modules/groups";
 import { cn } from "#/utils/cn";
+import { microsToDollars, usdBudgetFormatter } from "#/utils/currency";
 import type { GroupPageOutletContext } from "./GroupPage";
 import { UserAIBudgetOverrideDialog } from "./UserAIBudgetOverrideDialog";
+
+type AIBudgetColumn = {
+	spendByUserID: ReadonlyMap<string, GroupMemberAISpend>;
+	isLoading: boolean;
+};
 
 const GroupMembersPage: FC = () => {
 	const {
@@ -69,6 +81,29 @@ const GroupMembersPage: FC = () => {
 	const aibridgeVisible =
 		Boolean(useFeatureVisibility().aibridge) &&
 		experiments.includes("ai-gateway-cost-control");
+	const spendQuery = useQuery({
+		...groupMembersAISpend(groupData?.id ?? ""),
+		enabled: Boolean(groupData) && aibridgeVisible,
+	});
+	const aiBudgetColumn: AIBudgetColumn | undefined = aibridgeVisible
+		? {
+				spendByUserID: new Map(
+					spendQuery.data?.map((spend) => [spend.user_id, spend]),
+				),
+				isLoading: spendQuery.isLoading,
+			}
+		: undefined;
+
+	useEffect(() => {
+		if (spendQuery.error) {
+			toast.error(
+				getErrorMessage(spendQuery.error, "Unable to load AI budget."),
+				{
+					description: getErrorDetail(spendQuery.error),
+				},
+			);
+		}
+	}, [spendQuery.error]);
 
 	return (
 		<div className="flex flex-col w-full gap-1 pb-8">
@@ -92,8 +127,18 @@ const GroupMembersPage: FC = () => {
 				<Table aria-label="Group members">
 					<TableHeader>
 						<TableRow>
-							<TableHead className="w-2/5">User</TableHead>
-							<TableHead className="w-3/5">Status</TableHead>
+							<TableHead className={aiBudgetColumn ? undefined : "w-2/5"}>
+								User
+							</TableHead>
+							<TableHead className={aiBudgetColumn ? undefined : "w-3/5"}>
+								Status
+							</TableHead>
+							{aiBudgetColumn && (
+								<>
+									<TableHead>AI budget</TableHead>
+									<TableHead>Budget type</TableHead>
+								</>
+							)}
 							<TableHead className="w-auto" />
 						</TableRow>
 					</TableHeader>
@@ -112,7 +157,7 @@ const GroupMembersPage: FC = () => {
 									group={groupData}
 									key={member.id}
 									canUpdate={canUpdateGroup}
-									aiBudgetVisible={aibridgeVisible}
+									aiBudgetColumn={aiBudgetColumn}
 									onManageAIBudget={() => setBudgetUser(member)}
 									onRemove={async () => {
 										const mutation = removeMemberMutation.mutateAsync({
@@ -249,7 +294,7 @@ interface GroupMemberRowProps {
 	member: ReducedUser;
 	group: Group;
 	canUpdate: boolean;
-	aiBudgetVisible: boolean;
+	aiBudgetColumn: AIBudgetColumn | undefined;
 	onManageAIBudget: () => void;
 	onRemove: () => void;
 }
@@ -258,13 +303,13 @@ const GroupMemberRow: FC<GroupMemberRowProps> = ({
 	member,
 	group,
 	canUpdate,
-	aiBudgetVisible,
+	aiBudgetColumn,
 	onManageAIBudget,
 	onRemove,
 }) => {
 	return (
 		<TableRow key={member.id}>
-			<TableCell width="59%">
+			<TableCell width={aiBudgetColumn ? undefined : "59%"}>
 				<AvatarData
 					avatar={
 						<Avatar
@@ -280,7 +325,7 @@ const GroupMemberRow: FC<GroupMemberRowProps> = ({
 				/>
 			</TableCell>
 			<TableCell
-				width="40%"
+				width={aiBudgetColumn ? undefined : "40%"}
 				className={cn(
 					"capitalize",
 					member.status === "suspended" ? "text-content-secondary" : "",
@@ -289,7 +334,14 @@ const GroupMemberRow: FC<GroupMemberRowProps> = ({
 				<div>{member.status}</div>
 				<LastSeen at={member.last_seen_at} className="text-xs" />
 			</TableCell>
-			<TableCell width="1%">
+			{aiBudgetColumn && (
+				<GroupMemberAIBudgetCells
+					group={group}
+					spend={aiBudgetColumn.spendByUserID.get(member.id)}
+					isLoading={aiBudgetColumn.isLoading}
+				/>
+			)}
+			<TableCell className="w-1 whitespace-nowrap">
 				{canUpdate && (
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
@@ -299,7 +351,7 @@ const GroupMemberRow: FC<GroupMemberRowProps> = ({
 							</Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end">
-							{aiBudgetVisible && (
+							{aiBudgetColumn && (
 								<DropdownMenuItem onClick={onManageAIBudget}>
 									AI Budget
 								</DropdownMenuItem>
@@ -318,5 +370,76 @@ const GroupMemberRow: FC<GroupMemberRowProps> = ({
 		</TableRow>
 	);
 };
+
+const GroupMemberAIBudgetCells: FC<{
+	group: Group;
+	spend: GroupMemberAISpend | undefined;
+	isLoading: boolean;
+}> = ({ group, spend, isLoading }) => {
+	if (isLoading) {
+		return (
+			<>
+				<TableCell>
+					<Skeleton variant="text" width="60%" />
+				</TableCell>
+				<TableCell>
+					<Skeleton variant="text" width="40%" />
+				</TableCell>
+			</>
+		);
+	}
+
+	if (!spend) {
+		return (
+			<>
+				<TableCell>-</TableCell>
+				<TableCell>-</TableCell>
+			</>
+		);
+	}
+
+	const effectiveGroupMatches = spend.effective_group?.id === group.id;
+
+	return (
+		<>
+			<TableCell className="whitespace-nowrap tabular-nums">
+				{formatMemberAISpend(spend, effectiveGroupMatches)}
+			</TableCell>
+			<TableCell>
+				{effectiveGroupMatches ? budgetTypeLabel(spend) : "-"}
+			</TableCell>
+		</>
+	);
+};
+
+function formatMemberAISpend(
+	spend: GroupMemberAISpend,
+	showLimit: boolean,
+): string {
+	if (!showLimit) {
+		return formatBudgetUSD(spend.current_spend_micros);
+	}
+
+	return `${formatBudgetUSD(spend.current_spend_micros)} / ${
+		spend.spend_limit_micros === null
+			? "unlimited"
+			: formatBudgetUSD(spend.spend_limit_micros)
+	} USD`;
+}
+
+function formatBudgetUSD(micros: number): string {
+	return usdBudgetFormatter.format(microsToDollars(micros));
+}
+
+function budgetTypeLabel(spend: GroupMemberAISpend): string {
+	switch (spend.limit_source) {
+		case "group":
+			return "Group";
+		case "override":
+			return "Individual";
+		case null:
+			return "-";
+	}
+}
 
 export default GroupMembersPage;

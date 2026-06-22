@@ -6,6 +6,7 @@ import {
 } from "storybook-addon-remix-react-router";
 import { API } from "#/api/api";
 import {
+	getGroupMembersAISpendQueryKey,
 	getGroupMembersQueryKey,
 	getGroupQueryKey,
 	getGroupsForUserQueryKey,
@@ -21,6 +22,7 @@ import {
 	MockGroupWithoutMembers,
 	MockOrganizationMember,
 	MockOrganizationMember2,
+	MockUserMember,
 	MockUserOwner,
 } from "#/testHelpers/entities";
 import { withDashboardProvider } from "#/testHelpers/storybook";
@@ -238,6 +240,97 @@ const mockOwnerOverride: UserAIBudgetOverride = {
 	spend_limit_micros: 12_000_000_000,
 	created_at: "2026-01-01T00:00:00Z",
 	updated_at: "2026-01-01T00:00:00Z",
+};
+
+export const WithMemberAISpend: Story = {
+	parameters: {
+		features: ["aibridge"],
+		experiments: ["ai-gateway-cost-control"],
+		queries: [
+			groupQuery(MockGroupWithoutMembers),
+			groupMembersQuery({
+				users: MockGroup.members,
+				count: MockGroup.members.length,
+			}),
+			permissionsQuery({ canUpdateGroup: true }),
+			{
+				key: getGroupMembersAISpendQueryKey(MockGroupWithoutMembers.id),
+				data: [
+					{
+						user_id: MockUserOwner.id,
+						current_spend_micros: 1_345_000_000,
+						spend_limit_micros: 9_000_000_000,
+						effective_group: {
+							id: MockGroupWithoutMembers.id,
+							name: MockGroupWithoutMembers.name,
+						},
+						limit_source: "override",
+					},
+					{
+						user_id: MockUserMember.id,
+						current_spend_micros: 5_492_000_000,
+						spend_limit_micros: 7_000_000_000,
+						effective_group: {
+							id: MockGroupWithoutMembers.id,
+							name: MockGroupWithoutMembers.name,
+						},
+						limit_source: "group",
+					},
+				],
+			},
+		],
+	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(await canvas.findByText("AI budget")).toBeInTheDocument();
+		await expect(await canvas.findByText("Budget type")).toBeInTheDocument();
+		await expect(
+			await canvas.findByText("$1,345 / $9,000 USD"),
+		).toBeInTheDocument();
+		await expect(await canvas.findByText("Individual")).toBeInTheDocument();
+		await expect(
+			await canvas.findByText("$5,492 / $7,000 USD"),
+		).toBeInTheDocument();
+		await expect(await canvas.findByText("Group")).toBeInTheDocument();
+	},
+};
+
+export const WithMemberAISpendEffectiveGroupMismatch: Story = {
+	parameters: {
+		features: ["aibridge"],
+		experiments: ["ai-gateway-cost-control"],
+		queries: [
+			groupQuery(MockGroupWithoutMembers),
+			groupMembersQuery({
+				users: [MockUserOwner],
+				count: 1,
+			}),
+			permissionsQuery({ canUpdateGroup: true }),
+			{
+				key: getGroupMembersAISpendQueryKey(MockGroupWithoutMembers.id),
+				data: [
+					{
+						user_id: MockUserOwner.id,
+						current_spend_micros: 1_345_000_000,
+						spend_limit_micros: 9_000_000_000,
+						effective_group: {
+							id: "other-group-id",
+							name: "Other group",
+						},
+						limit_source: "group",
+					},
+				],
+			},
+		],
+	},
+	play: async ({ canvasElement }) => {
+		const canvas = within(canvasElement);
+		await expect(await canvas.findByText("$1,345")).toBeInTheDocument();
+		await expect(
+			canvas.queryByText("$1,345 / $9,000 USD"),
+		).not.toBeInTheDocument();
+		await expect(canvas.queryByText("Group")).not.toBeInTheDocument();
+	},
 };
 
 export const OpenAIBudgetFromMemberMenu: Story = {
