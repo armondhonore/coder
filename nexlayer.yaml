@@ -12,7 +12,7 @@ application:
       CODER_HTTP_ADDRESS: "0.0.0.0:7080"
       CODER_TELEMETRY_ENABLE: "false"
   - name: postgres
-    image: postgres:16-alpine
+    image: mirror.gcr.io/library/postgres:16-alpine
     servicePorts:
     - 5432
     vars:
