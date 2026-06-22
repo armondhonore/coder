@@ -1,0 +1,25 @@
+application:
+  name: coder
+  pods:
+  - name: app
+    image: ghcr.io/coder/coder:latest
+    path: /
+    servicePorts:
+    - 7080
+    vars:
+      CODER_PG_CONNECTION_URL: "postgresql://coder:coder@postgres.pod:5432/coder?sslmode=disable"
+      CODER_ACCESS_URL: "https://relaxed-weasel-coder.cloud.nexlayer.ai"
+      CODER_HTTP_ADDRESS: "0.0.0.0:7080"
+      CODER_TELEMETRY_ENABLE: "false"
+  - name: postgres
+    image: postgres:16-alpine
+    servicePorts:
+    - 5432
+    vars:
+      POSTGRES_DB: coder
+      POSTGRES_USER: coder
+      POSTGRES_PASSWORD: coder
+    volumes:
+    - name: coder-db
+      mountPath: /var/lib/postgresql/data
+      size: 5Gi
