@@ -7,6 +7,7 @@ import {
 	Route,
 	ScrollRestoration,
 	useLocation,
+	useParams,
 } from "react-router";
 import { GlobalErrorBoundary } from "./components/ErrorBoundary/GlobalErrorBoundary";
 import { Loader } from "./components/Loader/Loader";
@@ -530,6 +531,12 @@ const NavigateWithSearch = ({ to }: { to: string }) => {
 	return <Navigate to={{ pathname: to, search: location.search }} replace />;
 };
 
+/** Redirect /aibridge/sessions/:sessionId to /ai-gateway/sessions/:sessionId. */
+const RedirectAIBridgeSession = () => {
+	const { sessionId } = useParams() as { sessionId: string };
+	return <Navigate to={`/ai-gateway/sessions/${sessionId}`} replace />;
+};
+
 export const router = createBrowserRouter(
 	createRoutesFromChildren(
 		<Route element={<GlobalLayout />} errorElement={<GlobalErrorBoundary />}>
@@ -702,17 +709,34 @@ export const router = createBrowserRouter(
 						</Route>
 					</Route>
 
-					<Route path="/aibridge" element={<AIBridgeLayout />}>
+					<Route path="/ai-gateway" element={<AIBridgeLayout />}>
 						<Route
 							index
-							element={<Navigate to="/aibridge/sessions" replace />}
+							element={<Navigate to="/ai-gateway/sessions" replace />}
 						/>
 					</Route>
 
-					<Route path="/aibridge/sessions" element={<AIBridgeSessionsLayout />}>
+					<Route
+						path="/ai-gateway/sessions"
+						element={<AIBridgeSessionsLayout />}
+					>
 						<Route index element={<AIBridgeListSessionsPage />} />
 						<Route path=":sessionId" element={<AIBridgeSessionThreadsPage />} />
 					</Route>
+
+					{/* Legacy /aibridge routes redirect to /ai-gateway */}
+					<Route
+						path="/aibridge"
+						element={<Navigate to="/ai-gateway" replace />}
+					/>
+					<Route
+						path="/aibridge/sessions"
+						element={<Navigate to="/ai-gateway/sessions" replace />}
+					/>
+					<Route
+						path="/aibridge/sessions/:sessionId"
+						element={<RedirectAIBridgeSession />}
+					/>
 
 					<Route path="/ai/settings" element={<AISettingsLayout />}>
 						<Route element={<DeploymentConfigProvider />}>
